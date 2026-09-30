@@ -1,0 +1,2922 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>GIS Survey &amp; Well Information Dashboard</title>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<!-- shpjs: parses zipped Shapefiles (.shp/.dbf/.prj) into GeoJSON, client-side -->
+<script src="https://cdn.jsdelivr.net/npm/shpjs@6.2.0/dist/shp.js"></script>
+<!-- JSZip: lets us unzip a shapefile ourselves when we need the RAW,
+     un-reprojected coordinates (see the PSD93 source-projection option) -->
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<!-- Icons -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css">
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --navy-950:#050c1a;
+  --navy-900:#0a1a33;
+  --navy-800:#0f2647;
+  --navy-700:#15335c;
+  --navy-600:#1c4272;
+  --navy-500:#2a5a97;
+  --accent:#3ea6ff;
+  --accent-2:#00c2a8;
+  --gray-50:#f5f7fa;
+  --gray-100:#eef1f6;
+  --gray-200:#e2e7ee;
+  --gray-300:#c9d2de;
+  --gray-500:#7c8aa0;
+  --gray-700:#465269;
+  --white:#ffffff;
+  --danger:#e5484d;
+  --warning:#e8a33d;
+  --success:#2fb872;
+  --radius:10px;
+  --shadow:0 1px 2px rgba(10,26,51,.06), 0 4px 16px rgba(10,26,51,.06);
+  --shadow-lg:0 8px 30px rgba(10,26,51,.14);
+  --header-h:60px;
+  --sidebar-w:308px;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;
+  font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  background:var(--gray-50);
+  color:var(--navy-900);
+  font-size:14px;
+  overflow:hidden;
+}
+.mono{font-family:'IBM Plex Mono',monospace;}
+button{font-family:inherit;cursor:pointer;}
+input,select{font-family:inherit;}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:8px;}
+::-webkit-scrollbar-track{background:transparent;}
+
+#app{display:flex;flex-direction:column;height:100vh;}
+
+#header{
+  height:var(--header-h);min-height:var(--header-h);
+  background:linear-gradient(90deg,var(--navy-950),var(--navy-800) 60%,var(--navy-700));
+  color:var(--white);display:flex;align-items:center;padding:0 18px;gap:16px;
+  box-shadow:var(--shadow);z-index:1000;position:relative;
+}
+#header .brand{display:flex;align-items:center;gap:12px;min-width:0;}
+#header .brand .mark{
+  width:36px;height:36px;border-radius:9px;
+  background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--navy-950);flex:none;
+}
+#header .titles{min-width:0;}
+#header h1{font-size:15.5px;font-weight:700;margin:0;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#header .sub{font-size:11px;color:#9fb3d1;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#sidebarToggle{
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#fff;
+  width:36px;height:36px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center;
+}
+#sidebarToggle:hover{background:rgba(255,255,255,.16);}
+#header .spacer{flex:1;}
+#header .clock{font-size:12px;color:#cfe0f7;text-align:right;line-height:1.3;display:none;}
+#header .clock .d{font-weight:600;color:#fff;}
+#header .hbtns{display:flex;gap:8px;}
+.hbtn{
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#fff;
+  height:36px;padding:0 12px;border-radius:8px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px;
+}
+.hbtn:hover{background:rgba(255,255,255,.18);}
+.hbtn i{font-size:12px;}
+
+#body{flex:1;display:flex;min-height:0;position:relative;}
+
+#sidebar{
+  width:var(--sidebar-w);min-width:var(--sidebar-w);
+  background:var(--white);border-right:1px solid var(--gray-200);
+  display:flex;flex-direction:column;transition:margin-left .22s ease, transform .22s ease;
+  z-index:900;
+}
+#sidebar.collapsed{margin-left:calc(-1 * var(--sidebar-w));}
+.sb-head{padding:14px 16px 10px;border-bottom:1px solid var(--gray-100);display:flex;align-items:center;justify-content:space-between;}
+.sb-head h2{font-size:12.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--gray-700);margin:0;font-weight:700;}
+.sb-head .count-pill{font-size:11px;background:var(--navy-800);color:#fff;padding:2px 8px;border-radius:20px;font-weight:600;}
+#sidebarScroll{flex:1;overflow-y:auto;padding:12px 16px 24px;}
+.filter-group{margin-bottom:14px;}
+.filter-group label{
+  display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--navy-700);
+  margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px;
+}
+.filter-group label i{width:14px;color:var(--accent);font-size:12px;}
+.filter-group select, .filter-group input[type=text]{
+  width:100%;height:34px;border:1px solid var(--gray-300);border-radius:7px;background:var(--white);
+  padding:0 10px;font-size:12.8px;color:var(--navy-900);outline:none;
+}
+.filter-group select:focus, .filter-group input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(62,166,255,.15);}
+.sb-section-title{
+  font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:.5px;
+  margin:16px 0 8px;padding-top:12px;border-top:1px dashed var(--gray-200);
+}
+.sb-note{font-size:11px;color:var(--gray-500);line-height:1.5;background:var(--gray-50);border:1px solid var(--gray-100);border-radius:8px;padding:8px 10px;margin-bottom:14px;}
+.layer-toggle-list{display:flex;flex-direction:column;gap:6px;}
+.layer-toggle{
+  display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;font-size:12.3px;
+  border:1px solid var(--gray-100);background:var(--gray-50);
+}
+.layer-toggle .lt-row{display:flex;align-items:center;gap:8px;flex:1;min-width:0;cursor:pointer;}
+.layer-toggle .swatch{width:11px;height:11px;border-radius:3px;flex:none;}
+.layer-toggle .swatch.circle{border-radius:50%;}
+.layer-toggle .swatch.line{height:3px;border-radius:2px;align-self:center;}
+.layer-toggle .lname{flex:1;color:var(--navy-800);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.layer-toggle .lcount{color:var(--gray-500);font-size:11px;font-family:'IBM Plex Mono',monospace;}
+.layer-toggle .lexport{border:none;background:transparent;color:var(--gray-400);width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10.5px;flex:none;}
+.layer-toggle .lexport:hover{background:var(--gray-200);color:var(--navy-900);}
+.sb-actions{display:flex;flex-direction:column;gap:8px;margin-top:16px;}
+.btn{
+  border:1px solid var(--gray-300);background:var(--white);color:var(--navy-800);
+  height:36px;border-radius:8px;font-size:12.6px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:7px;
+}
+.btn:hover{background:var(--gray-100);}
+.btn.primary{background:var(--navy-800);border-color:var(--navy-800);color:#fff;}
+.btn.primary:hover{background:var(--navy-700);}
+.btn.danger{color:var(--danger);border-color:#f3c7c8;}
+.btn.danger:hover{background:#fdf1f1;}
+.btn.full{width:100%;}
+.btn.sm{height:30px;font-size:11.8px;padding:0 10px;}
+
+#sidebarScrim{display:none;position:fixed;inset:0;background:rgba(5,12,26,.4);z-index:850;}
+
+#main{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto;background:var(--gray-50);}
+#main-inner{padding:14px 18px 30px;display:flex;flex-direction:column;gap:16px;}
+
+#kpiRow{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;}
+.kpi-card{
+  background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius);
+  padding:12px 14px;box-shadow:var(--shadow);position:relative;overflow:hidden;
+}
+.kpi-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);}
+.kpi-card .kv{font-size:22px;font-weight:800;color:var(--navy-950);line-height:1.1;font-family:'IBM Plex Mono',monospace;}
+.kpi-card .kl{font-size:11px;color:var(--gray-500);font-weight:600;margin-top:4px;text-transform:uppercase;letter-spacing:.3px;}
+.kpi-card .ki{position:absolute;right:10px;top:10px;font-size:15px;color:var(--gray-200);}
+.kpi-card.c-well::before{background:#d91d4e;}
+.kpi-card.c-ia::before{background:#d71299;}
+.kpi-card.c-pit::before{background:#38a5d8;}
+.kpi-card.c-pad::before{background:#9cd613;}
+
+#kpiRow2{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+
+.card{background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius);box-shadow:var(--shadow);}
+.card-head{
+  display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--gray-100);
+}
+.card-head h3{font-size:13.5px;margin:0;font-weight:700;color:var(--navy-900);display:flex;align-items:center;gap:8px;}
+.card-head h3 i{color:var(--accent);font-size:13px;}
+.card-head .hint{font-size:11px;color:var(--gray-500);}
+.card-body{padding:14px 16px;}
+
+#mapTableRow{display:grid;grid-template-columns:1.5fr 1fr;gap:16px;align-items:start;}
+#mapCard{position:relative;}
+#map{width:100%;height:560px;border-radius:0 0 var(--radius) var(--radius);}
+#mapLoading{
+  position:absolute;inset:0;background:rgba(245,247,250,.85);display:flex;align-items:center;justify-content:center;
+  flex-direction:column;gap:10px;z-index:1200;border-radius:var(--radius);
+}
+.spinner{width:34px;height:34px;border:3px solid var(--gray-200);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+#mapToolbar{position:absolute;top:10px;right:10px;z-index:600;display:flex;flex-direction:column;gap:6px;}
+.map-btn{
+  width:32px;height:32px;background:var(--white);border:1px solid var(--gray-300);border-radius:7px;
+  display:flex;align-items:center;justify-content:center;color:var(--navy-800);box-shadow:var(--shadow);font-size:13px;
+}
+.map-btn:hover{background:var(--gray-100);}
+#coordDisplay{
+  position:absolute;left:10px;bottom:10px;z-index:600;background:rgba(10,26,51,.82);color:#cfe0f7;
+  font-family:'IBM Plex Mono',monospace;font-size:11px;padding:5px 10px;border-radius:6px;pointer-events:none;
+}
+#northArrow{position:absolute;top:10px;left:10px;z-index:600;background:rgba(255,255,255,.92);border:1px solid var(--gray-300);
+  border-radius:7px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow);}
+#legendBox{
+  position:absolute;bottom:10px;right:10px;z-index:600;background:rgba(255,255,255,.96);border:1px solid var(--gray-300);
+  border-radius:8px;padding:8px 10px;font-size:11px;box-shadow:var(--shadow);max-width:190px;
+}
+#legendBox h4{margin:0 0 6px;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-700);}
+.legend-row{display:flex;align-items:center;gap:6px;margin-bottom:3px;}
+.legend-row .sw{width:10px;height:10px;border-radius:3px;flex:none;}
+.legend-row .sw.circle{border-radius:50%;}
+
+#tableCard .card-head{flex-wrap:wrap;gap:8px;}
+.table-controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.search-box{position:relative;}
+.search-box input{
+  height:32px;border:1px solid var(--gray-300);border-radius:7px;padding:0 10px 0 30px;font-size:12.3px;width:180px;
+}
+.search-box i{position:absolute;left:10px;top:9px;color:var(--gray-500);font-size:12px;}
+.table-wrap{overflow:auto;max-height:410px;border:1px solid var(--gray-100);border-radius:8px;}
+table.data-table{border-collapse:collapse;width:100%;font-size:12px;}
+table.data-table thead th{
+  position:sticky;top:0;background:var(--navy-900);color:#fff;text-align:left;padding:8px 10px;font-weight:600;
+  white-space:nowrap;cursor:pointer;user-select:none;z-index:5;
+}
+table.data-table thead th:hover{background:var(--navy-700);}
+table.data-table thead th .sort-ic{font-size:9px;margin-left:4px;opacity:.7;}
+table.data-table tbody td{padding:7px 10px;border-bottom:1px solid var(--gray-100);white-space:nowrap;color:var(--navy-800);}
+table.data-table tbody tr:hover{background:var(--gray-50);cursor:pointer;}
+table.data-table tbody tr.row-selected{background:#e7f2ff;}
+.row-actions{display:flex;gap:4px;}
+.icon-btn{
+  width:24px;height:24px;border:1px solid var(--gray-300);background:#fff;border-radius:6px;display:flex;
+  align-items:center;justify-content:center;color:var(--navy-700);font-size:10.5px;
+}
+.icon-btn:hover{background:var(--gray-100);}
+.pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10.6px;font-weight:600;background:var(--gray-100);color:var(--navy-700);}
+.table-footer{display:flex;align-items:center;justify-content:space-between;padding-top:10px;font-size:11.6px;color:var(--gray-500);flex-wrap:wrap;gap:8px;}
+.pager{display:flex;align-items:center;gap:6px;}
+.empty-state{padding:30px;text-align:center;color:var(--gray-500);font-size:12.5px;}
+
+#chartsGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+.chart-card{background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius);box-shadow:var(--shadow);}
+.chart-card .ch-head{padding:10px 12px 0;font-size:12px;font-weight:700;color:var(--navy-800);display:flex;justify-content:space-between;align-items:center;}
+.chart-card .ch-head .hint{font-size:10px;color:var(--gray-500);font-weight:400;}
+.chart-card .ch-body{padding:8px 12px 12px;height:190px;position:relative;}
+
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+.stat-box{background:var(--gray-50);border:1px solid var(--gray-100);border-radius:8px;padding:10px 12px;}
+.stat-box .sv{font-size:18px;font-weight:800;color:var(--navy-950);font-family:'IBM Plex Mono',monospace;}
+.stat-box .sl{font-size:10.6px;color:var(--gray-500);font-weight:600;margin-top:2px;text-transform:uppercase;}
+.two-col{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;}
+.install-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+.install-item{
+  border:1px solid var(--gray-100);border-radius:8px;padding:10px;display:flex;align-items:center;gap:10px;background:var(--gray-50);
+}
+.install-item .isw{width:14px;height:14px;border-radius:4px;flex:none;border:1px solid rgba(0,0,0,.15);}
+.install-item .iv{font-size:15px;font-weight:800;color:var(--navy-950);font-family:'IBM Plex Mono',monospace;}
+.install-item .il{font-size:10.5px;color:var(--gray-500);font-weight:600;}
+
+#detailPanel{
+  position:fixed;top:var(--header-h);right:0;bottom:0;width:360px;background:var(--white);border-left:1px solid var(--gray-200);
+  box-shadow:-6px 0 24px rgba(10,26,51,.12);transform:translateX(100%);transition:transform .25s ease;z-index:1100;
+  display:flex;flex-direction:column;
+}
+#detailPanel.open{transform:translateX(0);}
+.dp-head{padding:14px 16px;border-bottom:1px solid var(--gray-100);display:flex;justify-content:space-between;align-items:flex-start;background:var(--navy-900);color:#fff;}
+.dp-head .dpt{font-size:14px;font-weight:700;}
+.dp-head .dps{font-size:11px;color:#a9c1e0;margin-top:3px;}
+.dp-close{background:rgba(255,255,255,.1);border:none;color:#fff;width:26px;height:26px;border-radius:6px;}
+.dp-body{flex:1;overflow-y:auto;padding:14px 16px;}
+.dp-section{margin-bottom:16px;}
+.dp-section h4{
+  font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--accent);margin:0 0 8px;
+  font-weight:700;display:flex;align-items:center;gap:6px;
+}
+.dp-row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--gray-100);font-size:12.4px;}
+.dp-row .k{color:var(--gray-500);}
+.dp-row .v{color:var(--navy-900);font-weight:600;text-align:right;max-width:60%;word-break:break-word;}
+
+.dwg-list{display:flex;flex-direction:column;gap:6px;margin-bottom:8px;}
+.dwg-item{
+  display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--gray-200);border-radius:7px;background:var(--gray-50);
+}
+.dwg-item i.dwg-ic{color:var(--accent);font-size:13px;flex:none;}
+.dwg-item .dwg-name{flex:1;min-width:0;font-size:12px;font-weight:600;color:var(--navy-900);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dwg-item .dwg-meta{font-size:10.5px;color:var(--gray-500);font-family:'IBM Plex Mono',monospace;flex:none;}
+.dwg-item .dwg-act{display:flex;gap:4px;flex:none;}
+.dwg-item .dwg-act button{
+  border:none;background:transparent;color:var(--gray-500);width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11.5px;
+}
+.dwg-item .dwg-act button:hover{background:var(--gray-200);color:var(--navy-900);}
+.dwg-item .dwg-act button.dwg-detach:hover{background:#fdf1f1;color:var(--danger);}
+.dwg-empty{font-size:11.3px;color:var(--gray-500);margin-bottom:8px;}
+.dwg-session-note{font-size:10px;color:var(--warning);margin-top:2px;}
+
+.shp-list{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;}
+.shp-item{
+  display:flex;align-items:center;gap:8px;padding:8px 9px;border:1px solid var(--gray-200);border-radius:8px;background:var(--white);
+}
+.shp-item .shp-swatch{width:13px;height:13px;border-radius:3px;flex:none;border:1px solid rgba(0,0,0,.25);}
+.shp-item .shp-info{flex:1;min-width:0;}
+.shp-item .shp-name{font-size:12.2px;font-weight:700;color:var(--navy-900);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.shp-item .shp-meta{font-size:10.3px;color:var(--gray-500);font-family:'IBM Plex Mono',monospace;}
+.shp-item .shp-act{display:flex;gap:3px;flex:none;}
+.shp-item .shp-act button{
+  border:none;background:transparent;color:var(--gray-500);width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11.5px;
+}
+.shp-item .shp-act button:hover{background:var(--gray-100);color:var(--navy-900);}
+.shp-item .shp-act button.shp-remove:hover{background:#fdf1f1;color:var(--danger);}
+.shp-item .shp-act button.shp-vis.off{opacity:.35;}
+.shp-item .shp-act button.shp-align.active{background:var(--navy-800);color:#fff;}
+.shp-item .shp-shift-note{width:100%;font-size:10px;color:var(--accent);margin-top:2px;}
+.shp-empty{font-size:11.3px;color:var(--gray-500);margin-bottom:10px;}
+.shp-session-note{font-size:10px;color:var(--warning);margin:-4px 0 8px;}
+.shp-loading{font-size:11.3px;color:var(--accent);margin-bottom:8px;display:none;align-items:center;gap:6px;}
+.shp-loading.show{display:flex;}
+.shp-loading i{animation:spin 1s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.dp-foot{padding:12px 16px;border-top:1px solid var(--gray-100);}
+
+#toastHost{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;gap:8px;align-items:center;}
+.toast{background:var(--navy-950);color:#fff;padding:10px 16px;border-radius:8px;font-size:12.5px;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:8px;}
+.toast.error{background:#5c1a1c;}
+.toast.warn{background:#5c4a1a;}
+.toast i{color:var(--accent);}
+.toast.error i{color:var(--danger);}
+.toast.warn i{color:var(--warning);}
+
+.leaflet-popup-content-wrapper{border-radius:8px;box-shadow:var(--shadow-lg);}
+.leaflet-popup-content{font-family:'Inter',sans-serif;font-size:12px;margin:10px 12px;}
+.pop-title{font-weight:700;color:var(--navy-900);font-size:13px;margin-bottom:6px;border-bottom:1px solid var(--gray-100);padding-bottom:5px;}
+.pop-row{display:flex;justify-content:space-between;gap:10px;padding:2px 0;}
+.pop-row .k{color:var(--gray-500);}
+.pop-row .v{font-weight:600;color:var(--navy-800);text-align:right;}
+
+@media (max-width:1300px){
+  #kpiRow{grid-template-columns:repeat(4,1fr);}
+  #kpiRow2{grid-template-columns:repeat(2,1fr);}
+  #mapTableRow{grid-template-columns:1fr;}
+  #chartsGrid{grid-template-columns:repeat(2,1fr);}
+}
+@media (max-width:760px){
+  :root{--sidebar-w:82vw;}
+  #header .clock{display:none;}
+  #header h1{font-size:13.5px;}
+  #sidebar{position:fixed;top:var(--header-h);bottom:0;left:0;}
+  #sidebar.collapsed{transform:translateX(-100%);margin-left:0;}
+  #sidebar:not(.collapsed) ~ #sidebarScrim{display:block;}
+  #kpiRow, #kpiRow2{grid-template-columns:repeat(2,1fr);}
+  #chartsGrid{grid-template-columns:1fr;}
+  .two-col{grid-template-columns:1fr;}
+  .stat-grid{grid-template-columns:repeat(2,1fr);}
+  #detailPanel{width:100%;}
+}
+@media print{
+  #header,#sidebar,#sidebarToggle,.hbtn,#detailPanel,#mapToolbar,#toastHost,.table-controls,.sb-actions{display:none !important;}
+  #main{overflow:visible;}
+  body{overflow:visible;}
+}
+/* ===== COORDINATE SEARCH TOOL ===== */
+.coord-search-card{
+  border:1px solid var(--gray-200);border-radius:10px;background:var(--gray-50);
+  margin-bottom:16px;overflow:hidden;
+}
+.cs-head{
+  display:flex;align-items:center;gap:7px;padding:10px 12px;background:var(--navy-900);color:#fff;
+  font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+}
+.cs-head i{color:var(--accent);}
+.cs-tabs{display:flex;border-bottom:1px solid var(--gray-200);}
+.cs-tab{
+  flex:1;border:none;background:var(--white);color:var(--gray-500);height:32px;font-size:11.5px;font-weight:700;
+  letter-spacing:.3px;cursor:pointer;border-bottom:2px solid transparent;
+}
+.cs-tab.active{color:var(--navy-900);border-bottom-color:var(--accent);background:var(--gray-50);}
+.cs-panel{padding:10px 12px 12px;}
+.cs-row-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.cs-btn-row{display:flex;gap:8px;margin-top:4px;}
+.cs-btn-row .btn{flex:1;}
+.cs-error{
+  font-size:11px;color:var(--danger);background:#fdf1f1;border:1px solid #f3c7c8;border-radius:6px;
+  padding:6px 8px;margin-top:6px;display:none;line-height:1.4;
+}
+.cs-error.show{display:block;}
+.cs-result{
+  margin:0 12px 12px;padding:9px 10px;border-radius:8px;background:#e7f2ff;border:1px solid #cfe4fb;
+  font-size:11.6px;color:var(--navy-800);display:none;
+}
+.cs-result.show{display:block;}
+.cs-result .cr-title{font-weight:700;color:var(--navy-900);margin-bottom:4px;display:flex;align-items:center;gap:6px;}
+.cs-result .cr-row{display:flex;justify-content:space-between;gap:8px;padding:2px 0;}
+.cs-result .cr-row .k{color:var(--gray-500);}
+.cs-result .cr-row .v{font-weight:600;font-family:'IBM Plex Mono',monospace;}
+.cs-result .cr-actions{display:flex;gap:6px;margin-top:8px;}
+.cs-result .cr-actions button{flex:1;}
+.cs-datum-hint{font-size:10.6px;color:var(--gray-500);line-height:1.4;padding:0 0 8px;}
+.cs-result .cr-sub{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--gray-500);font-weight:700;margin:8px 0 3px;}
+.cs-result .cr-sub:first-child{margin-top:0;}
+
+/* search marker popup + icon */
+.search-marker-icon{
+  width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+  filter:drop-shadow(0 2px 4px rgba(0,0,0,.35));
+}
+.search-marker-icon i{font-size:26px;color:#ffce00;-webkit-text-stroke:1px #7a5b00;}
+.search-popup .pop-title{display:flex;align-items:center;gap:6px;}
+.search-popup .sp-actions{display:flex;gap:6px;margin-top:8px;}
+.search-popup .sp-actions button{
+  flex:1;height:28px;border-radius:6px;border:1px solid var(--gray-300);background:var(--white);
+  font-size:11px;font-weight:600;color:var(--navy-800);cursor:pointer;
+}
+.search-popup .sp-actions button.primary{background:var(--navy-800);border-color:var(--navy-800);color:#fff;}
+
+/* ===== MEASUREMENT TOOL ===== */
+.mt-sep{height:1px;background:var(--gray-300);margin:2px 2px;}
+.map-btn.active{background:var(--navy-800);border-color:var(--navy-800);color:#fff;}
+.map-btn.active:hover{background:var(--navy-700);}
+#measurePanel{
+  position:absolute;top:52px;left:10px;z-index:650;display:none;
+  background:rgba(255,255,255,.97);border:1px solid var(--gray-300);border-radius:8px;box-shadow:var(--shadow);
+  width:210px;font-size:11.6px;
+}
+#measurePanel.show{display:block;}
+#measurePanel .mp-head{
+  display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--navy-900);color:#fff;
+  border-radius:8px 8px 0 0;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;
+}
+#measurePanel .mp-head i{color:var(--accent);}
+#measurePanel .mp-body{padding:9px 10px;}
+#measurePanel .mp-row{display:flex;justify-content:space-between;gap:8px;padding:3px 0;}
+#measurePanel .mp-row .k{color:var(--gray-500);}
+#measurePanel .mp-row .v{font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--navy-900);}
+#measurePanel .mp-hint{margin-top:6px;padding-top:6px;border-top:1px dashed var(--gray-200);color:var(--gray-500);font-size:10.4px;line-height:1.4;}
+.leaflet-measure-tooltip{
+  background:rgba(10,26,51,.92);color:#fff;border:none;border-radius:6px;padding:3px 8px;
+  font-size:11px;font-weight:700;font-family:'IBM Plex Mono',monospace;box-shadow:var(--shadow);
+}
+.leaflet-measure-tooltip::before{display:none;}
+.leaflet-container.measuring-cursor{cursor:crosshair !important;}
+
+/* ---- Data entry / edit tool ---- */
+#editHintPanel{
+  position:absolute;top:52px;left:10px;z-index:650;display:none;
+  background:rgba(255,255,255,.97);border:1px solid var(--gray-300);border-radius:8px;box-shadow:var(--shadow);
+  width:230px;font-size:11.6px;
+}
+#editHintPanel.show{display:block;}
+#editHintPanel .mp-head{
+  display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--navy-900);color:#fff;
+  border-radius:8px 8px 0 0;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;
+}
+#editHintPanel .mp-head i{color:var(--accent-2);}
+#editHintPanel .mp-body{padding:9px 10px;color:var(--gray-700);line-height:1.5;font-size:11.3px;}
+#editHintPanel .mp-body button{margin-top:8px;}
+#alignHintPanel{
+  position:absolute;top:52px;left:10px;z-index:650;display:none;
+  background:rgba(255,255,255,.97);border:1px solid var(--gray-300);border-radius:8px;box-shadow:var(--shadow);
+  width:240px;font-size:11.6px;
+}
+#alignHintPanel.show{display:block;}
+#alignHintPanel .mp-head{
+  display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--navy-900);color:#fff;
+  border-radius:8px 8px 0 0;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;
+}
+#alignHintPanel .mp-head i{color:#ffd400;}
+#alignHintPanel .mp-body{padding:9px 10px;color:var(--gray-700);line-height:1.5;font-size:11.3px;}
+.leaflet-draw-vertex-icon{background:#00c2a8;}
+.leaflet-container.adding-cursor{cursor:copy !important;}
+#modalScrim{display:none;position:fixed;inset:0;background:rgba(5,12,26,.5);z-index:2000;align-items:center;justify-content:center;}
+#modalScrim.show{display:flex;}
+#featureFormModal{
+  background:#fff;border-radius:12px;box-shadow:var(--shadow-lg);width:420px;max-width:92vw;max-height:86vh;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+#featureFormModal .fm-head{
+  padding:14px 18px;background:linear-gradient(90deg,var(--navy-950),var(--navy-800));color:#fff;
+  display:flex;align-items:center;justify-content:space-between;
+}
+#featureFormModal .fm-head h3{margin:0;font-size:14px;font-weight:700;}
+#featureFormModal .fm-head button{background:transparent;border:none;color:#fff;font-size:16px;opacity:.8;}
+#featureFormModal .fm-head button:hover{opacity:1;}
+#featureFormModal .fm-body{padding:16px 18px;overflow-y:auto;flex:1;}
+#featureFormModal .fm-field{margin-bottom:12px;}
+#featureFormModal .fm-field label{display:block;font-size:11.5px;font-weight:700;color:var(--navy-700);text-transform:uppercase;letter-spacing:.3px;margin-bottom:5px;}
+#featureFormModal .fm-field input{
+  width:100%;height:34px;border:1px solid var(--gray-300);border-radius:7px;background:var(--white);
+  padding:0 10px;font-size:12.8px;color:var(--navy-900);outline:none;
+}
+#featureFormModal .fm-field input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(62,166,255,.15);}
+#featureFormModal .fm-foot{padding:12px 18px;border-top:1px solid var(--gray-100);display:flex;gap:8px;justify-content:flex-end;}
+</style>
+</head>
+<body>
+
+<!-- ================= DATA (existing QGIS2Web layer files — untouched) ================= -->
+<script src="data/SAHMAH_Block7BuildingArea_2.js"></script>
+<script src="data/SAHMAH_Block7Building_19.js"></script>
+<script src="data/SAHMAH_Block7DatacableFeatures_21.js"></script>
+<script src="data/SAHMAH_Block7Datacables_13.js"></script>
+<script src="data/SAHMAH_Block7FlowlineFeatures_22.js"></script>
+<script src="data/SAHMAH_Block7Flowlines_14.js"></script>
+<script src="data/SAHMAH_Block7InstallationOilGasArea_5.js"></script>
+<script src="data/SAHMAH_Block7InstallationOilGasPoint_23.js"></script>
+<script src="data/SAHMAH_Block7OilGasFascilitesFeature_6.js"></script>
+<script src="data/SAHMAH_Block7OilReservoir_7.js"></script>
+<script src="data/SAHMAH_Block7PipelineFeatures_26.js"></script>
+<script src="data/SAHMAH_Block7Pipelines_16.js"></script>
+<script src="data/SAHMAH_Block7PowerlineFeatures_27.js"></script>
+<script src="data/SAHMAH_Block7Powerlines_17.js"></script>
+<script src="data/SAHMAH_Block7RoadCentreLine_9.js"></script>
+<script src="data/SAHMAH_Block7RoadEdge_10.js"></script>
+<script src="data/SAHMAH_Block7WellPadCenter_25.js"></script>
+<script src="data/SAHMAH_Block7Well_Center_24.js"></script>
+
+<div id="app">
+
+  <header id="header">
+    <button id="sidebarToggle" title="Toggle filter panel"><i class="fa-solid fa-bars"></i></button>
+    <div class="brand">
+      <div class="mark"><i class="fa-solid fa-map-location-dot"></i></div>
+      <div class="titles">
+        <h1>SAHMAH Block 7 — Field Infrastructure Dashboard</h1>
+        <div class="sub">Wells, Pipelines, Flowlines, Powerlines &amp; Installations</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="clock" id="clockDisplay"><div class="d" id="clockTime">--:--:--</div><div id="clockDate">-- --- ----</div></div>
+    <div class="hbtns">
+      <button class="hbtn" id="btnFullscreen"><i class="fa-solid fa-expand"></i><span>Full Screen</span></button>
+      <button class="hbtn" id="btnResetDash"><i class="fa-solid fa-rotate-left"></i><span>Reset</span></button>
+    </div>
+  </header>
+
+  <div id="body">
+    <div id="sidebarScrim"></div>
+    <aside id="sidebar">
+      <div class="sb-head">
+        <h2>Filters</h2>
+        <span class="count-pill" id="filterResultCount">0</span>
+      </div>
+      <div id="sidebarScroll">
+
+        <!-- ================= COORDINATE SEARCH TOOL ================= -->
+        <div class="coord-search-card">
+          <div class="cs-head"><i class="fa-solid fa-crosshairs"></i>Coordinate Search</div>
+
+          <div class="cs-panel" style="padding-bottom:0;">
+            <div class="filter-group" style="margin-bottom:10px;">
+              <label><i class="fa-solid fa-earth-americas"></i>Coordinate System / Datum</label>
+              <select id="cs_datum">
+                <option value="WGS84">WGS84 (GPS)</option>
+                <option value="PSD93">PSD93 (PDO Survey Datum 1993)</option>
+              </select>
+            </div>
+            <div class="cs-datum-hint" id="cs_datum_hint"></div>
+          </div>
+
+          <div class="cs-tabs">
+            <button class="cs-tab active" id="cs_tab_utm" data-tab="utm">UTM</button>
+            <button class="cs-tab" id="cs_tab_latlong" data-tab="latlong">Lat / Long</button>
+          </div>
+
+          <div class="cs-panel" id="cs_panel_utm">
+            <div class="cs-row-2">
+              <div class="filter-group" style="margin-bottom:8px;">
+                <label>Zone</label>
+                <input type="number" id="cs_utmZone" value="40" min="1" max="60">
+              </div>
+              <div class="filter-group" style="margin-bottom:8px;">
+                <label>Hemisphere</label>
+                <select id="cs_utmHemi"><option value="N">N</option><option value="S">S</option></select>
+              </div>
+            </div>
+            <div class="filter-group" style="margin-bottom:8px;">
+              <label>Easting</label>
+              <input type="text" id="cs_utmEasting" placeholder="e.g. 500000" inputmode="decimal">
+            </div>
+            <div class="filter-group" style="margin-bottom:0;">
+              <label>Northing</label>
+              <input type="text" id="cs_utmNorthing" placeholder="e.g. 2145000" inputmode="decimal">
+            </div>
+            <div class="cs-btn-row">
+              <button class="btn primary sm" id="cs_utmSearch"><i class="fa-solid fa-magnifying-glass-location"></i>Search Location</button>
+              <button class="btn sm" id="cs_utmClear"><i class="fa-solid fa-xmark"></i>Clear</button>
+            </div>
+            <div class="cs-error" id="cs_utmError"></div>
+          </div>
+
+          <div class="cs-panel" id="cs_panel_latlong" style="display:none;">
+            <div class="filter-group" style="margin-bottom:8px;">
+              <label>Latitude</label>
+              <input type="text" id="cs_lat" placeholder="e.g. 19.352300" inputmode="decimal">
+            </div>
+            <div class="filter-group" style="margin-bottom:0;">
+              <label>Longitude</label>
+              <input type="text" id="cs_lng" placeholder="e.g. 56.472980" inputmode="decimal">
+            </div>
+            <div class="cs-btn-row">
+              <button class="btn primary sm" id="cs_llSearch"><i class="fa-solid fa-magnifying-glass-location"></i>Search Location</button>
+              <button class="btn sm" id="cs_llClear"><i class="fa-solid fa-xmark"></i>Clear</button>
+            </div>
+            <div class="cs-error" id="cs_llError"></div>
+          </div>
+
+          <div class="cs-result" id="cs_result">
+            <div class="cr-title"><i class="fa-solid fa-location-dot" style="color:#ffce00;"></i>Search Result</div>
+            <div id="cs_res_sourceBlock" style="display:none;">
+              <div class="cr-sub" id="cs_res_sourceLabel">PSD93 (Entered)</div>
+              <div class="cr-row"><span class="k">Latitude</span><span class="v" id="cs_res_srcLat">—</span></div>
+              <div class="cr-row"><span class="k">Longitude</span><span class="v" id="cs_res_srcLng">—</span></div>
+              <div class="cr-row" id="cs_res_utmRow" style="display:none;"><span class="k">UTM Used</span><span class="v" id="cs_res_utm">—</span></div>
+              <div class="cr-sub">WGS84 (Map)</div>
+            </div>
+            <div class="cr-row"><span class="k">Latitude</span><span class="v" id="cs_res_lat">—</span></div>
+            <div class="cr-row"><span class="k">Longitude</span><span class="v" id="cs_res_lng">—</span></div>
+            <div class="cr-actions">
+              <button class="btn sm" id="cs_res_zoom"><i class="fa-solid fa-crosshairs"></i>Zoom</button>
+              <button class="btn sm" id="cs_res_copy"><i class="fa-solid fa-copy"></i>Copy</button>
+              <button class="btn sm danger" id="cs_res_clear"><i class="fa-solid fa-trash"></i>Clear</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sb-note"><i class="fa-solid fa-circle-info" style="color:var(--accent);margin-right:4px;"></i>This export contains 18 layers across Wells, Pipelines, Flowlines, Powerlines, Data Cables, Roads, Buildings and Installations for Block 7 (SAHMAH). Filters below apply across every layer at once — use the Layer Visibility list to focus on specific layers.</div>
+
+        <div class="filter-group">
+          <label><i class="fa-solid fa-magnifying-glass"></i>Global Search</label>
+          <input type="text" id="f_search" placeholder="Name, submission ID, remarks…">
+        </div>
+
+        <div class="filter-group">
+          <label><i class="fa-solid fa-building-user"></i>Owner</label>
+          <select id="f_owner"><option value="">All Owners</option></select>
+        </div>
+
+        <div class="filter-group">
+          <label><i class="fa-solid fa-circle-check"></i>Status</label>
+          <select id="f_status"><option value="">All Statuses</option></select>
+        </div>
+
+        <div class="filter-group">
+          <label><i class="fa-solid fa-hashtag"></i>Block No. / Name</label>
+          <select id="f_block"><option value="">All Blocks</option></select>
+        </div>
+
+        <div class="sb-actions">
+          <button class="btn danger full" id="btnClearFilters"><i class="fa-solid fa-filter-circle-xmark"></i>Clear Filters</button>
+        </div>
+
+        <div class="sb-section-title">Layer Visibility</div>
+        <div class="layer-toggle-list" id="layerToggleList"></div>
+        <div class="sb-actions">
+          <button class="btn sm full" id="btnShowAllLayers"><i class="fa-solid fa-eye"></i>Show All</button>
+          <button class="btn sm full" id="btnHideAllLayers"><i class="fa-solid fa-eye-slash"></i>Hide All</button>
+        </div>
+
+        <div class="sb-section-title">Quick Actions</div>
+        <div class="sb-actions">
+          <button class="btn full" id="btnClearSelection"><i class="fa-solid fa-eraser"></i>Clear Selection</button>
+          <button class="btn primary full" id="btnResetDash2"><i class="fa-solid fa-rotate-left"></i>Reset Dashboard</button>
+        </div>
+
+        <div class="sb-section-title">Edit Data</div>
+        <div class="sb-note">Use the pin / line / polygon / pencil buttons on the map toolbar to add a new feature to any layer, or edit/delete an existing one. Use the small download icon next to a layer above to export just that layer. Changes are saved in this browser automatically.</div>
+        <div class="sb-actions">
+          <button class="btn danger full" id="btnClearEdits"><i class="fa-solid fa-trash"></i>Discard My Edits</button>
+        </div>
+
+        <div class="sb-section-title">Reference Layers (Shapefile)</div>
+        <div class="sb-note">Attach a zipped Shapefile (.shp + .dbf, ideally with .prj) as an extra reference layer drawn directly on the map — for CAD reference drawings, use the DWG attachment on a feature's detail panel instead.</div>
+        <div class="shp-loading" id="shp_loading"><i class="fa-solid fa-spinner"></i>Parsing shapefile…</div>
+        <div class="shp-list" id="shp_list"></div>
+        <div class="filter-group" style="margin-bottom:8px;">
+          <label><i class="fa-solid fa-earth-africa"></i>Source Projection</label>
+          <select id="shp_projSelect">
+            <option value="auto">Auto-detect (use file's own .prj)</option>
+            <option value="psd93_39">PSD93 — UTM Zone 39N (west of 54°E)</option>
+            <option value="psd93_40">PSD93 — UTM Zone 40N (54°E – 60°E)</option>
+          </select>
+        </div>
+        <button class="btn sm full" id="btnAttachShp"><i class="fa-solid fa-file-zipper"></i>Attach Shapefile (.zip)</button>
+      </div>
+    </aside>
+
+    <main id="main">
+      <div id="main-inner">
+
+        <div id="kpiRow">
+          <div class="kpi-card"><div class="kv" id="kpi_total">0</div><div class="kl">Total Features</div><i class="fa-solid fa-database ki"></i></div>
+          <div class="kpi-card c-well"><div class="kv" id="kpi_wells">0</div><div class="kl">Wells &amp; Pads</div><i class="fa-solid fa-oil-well ki"></i></div>
+          <div class="kpi-card c-ia"><div class="kv" id="kpi_ia">0</div><div class="kl">Installation Areas</div><i class="fa-solid fa-industry ki"></i></div>
+          <div class="kpi-card"><div class="kv" id="kpi_lines">0 km</div><div class="kl">Pipeline + Flowline Length</div><i class="fa-solid fa-diagram-project ki"></i></div>
+          <div class="kpi-card"><div class="kv" id="kpi_roads">0 km</div><div class="kl">Road Edge Length</div><i class="fa-solid fa-road ki"></i></div>
+          <div class="kpi-card c-pit"><div class="kv" id="kpi_operating">0</div><div class="kl">Operating</div><i class="fa-solid fa-circle-check ki"></i></div>
+          <div class="kpi-card c-pad"><div class="kv" id="kpi_planned">0</div><div class="kl">Planned</div><i class="fa-solid fa-clock ki"></i></div>
+        </div>
+
+        <div id="kpiRow2">
+          <div class="kpi-card"><div class="kv" id="kpi_avgArea">0</div><div class="kl">Avg. Installation Area (m²)</div></div>
+          <div class="kpi-card"><div class="kv" id="kpi_totalArea">0</div><div class="kl">Total Installation Area (m²)</div></div>
+        </div>
+
+        <div id="mapTableRow">
+
+          <div class="card" id="mapCard">
+            <div class="card-head">
+              <h3><i class="fa-solid fa-map"></i>Operations Map</h3>
+              <span class="hint" id="mapFeatureCount">0 features shown</span>
+            </div>
+            <div style="position:relative;">
+              <div id="map"></div>
+              <div id="mapLoading"><div class="spinner"></div><div style="font-size:12px;color:var(--navy-700);font-weight:600;">Loading GIS layers…</div></div>
+              <div id="northArrow" title="North"><i class="fa-solid fa-location-arrow" style="color:var(--navy-800);transform:rotate(0deg);"></i></div>
+              <div id="mapToolbar">
+                <button class="map-btn" id="btnLocate" title="Locate me"><i class="fa-solid fa-location-crosshairs"></i></button>
+                <button class="map-btn" id="btnResetExtent" title="Reset extent"><i class="fa-solid fa-expand"></i></button>
+                <button class="map-btn" id="btnMapFullscreen" title="Full screen map"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
+                <div class="mt-sep"></div>
+                <button class="map-btn" id="btnMeasureDistance" title="Measure distance (m)"><i class="fa-solid fa-ruler"></i></button>
+                <button class="map-btn" id="btnMeasureArea" title="Measure area (m²)"><i class="fa-solid fa-draw-polygon"></i></button>
+                <button class="map-btn" id="btnMeasureClear" title="Clear measurements"><i class="fa-solid fa-eraser"></i></button>
+                <div class="mt-sep"></div>
+                <button class="map-btn" id="btnAddPoint" title="Add a new point feature"><i class="fa-solid fa-location-dot"></i></button>
+                <button class="map-btn" id="btnAddLine" title="Add a new line feature"><i class="fa-solid fa-slash"></i></button>
+                <button class="map-btn" id="btnAddPolygon" title="Add a new polygon/area feature"><i class="fa-solid fa-draw-polygon"></i></button>
+                <button class="map-btn" id="btnEditFeature" title="Edit / delete a feature — click it on the map"><i class="fa-solid fa-pen"></i></button>
+              </div>
+              <div id="coordDisplay">Lat: —, Lng: —</div>
+              <div id="editHintPanel">
+                <div class="mp-head"><i class="fa-solid fa-pen-to-square"></i><span id="eh_title">Add Feature</span></div>
+                <div class="mp-body" id="eh_body">Click the map to place the new well.</div>
+              </div>
+              <div id="alignHintPanel">
+                <div class="mp-head"><i class="fa-solid fa-arrows-to-dot"></i><span id="ah_title">Align Reference Layer</span></div>
+                <div class="mp-body" id="ah_body">Click a recognizable point on the reference layer.</div>
+              </div>
+              <div id="measurePanel">
+                <div class="mp-head"><i class="fa-solid fa-ruler-combined"></i><span id="mp_title">Measure Distance</span></div>
+                <div class="mp-body">
+                  <div class="mp-row"><span class="k" id="mp_metricLabel">Total Distance</span><span class="v" id="mp_metricValue">0.00 m</span></div>
+                  <div class="mp-row" id="mp_segRow"><span class="k">Last Segment</span><span class="v" id="mp_segValue">—</span></div>
+                  <div class="mp-hint">Click the map to add points. Double-click to finish this shape. Press Esc or the toolbar button to stop.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" id="tableCard">
+            <div class="card-head">
+              <h3><i class="fa-solid fa-table"></i>Feature Records</h3>
+              <div class="table-controls">
+                <div class="search-box"><i class="fa-solid fa-magnifying-glass"></i><input type="text" id="tableSearch" placeholder="Search table…"></div>
+                <button class="btn sm" id="btnExportCsv"><i class="fa-solid fa-file-csv"></i>Export CSV</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="table-wrap"><table class="data-table" id="dataTable">
+                <thead><tr id="tableHeadRow"></tr></thead>
+                <tbody id="tableBody"></tbody>
+              </table></div>
+              <div class="table-footer">
+                <span id="tableStatus">0 records</span>
+                <div class="pager">
+                  <button class="icon-btn" id="pagerPrev"><i class="fa-solid fa-chevron-left"></i></button>
+                  <span id="pagerLabel" class="mono">Page 1 / 1</span>
+                  <button class="icon-btn" id="pagerNext"><i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h3><i class="fa-solid fa-chart-column"></i>Analytics</h3><span class="hint">Click a bar/slice to filter the dashboard</span></div>
+          <div class="card-body">
+            <div id="chartsGrid">
+              <div class="chart-card"><div class="ch-head">Features by Layer (Top 10)<span class="hint">click</span></div><div class="ch-body"><canvas id="chart1"></canvas></div></div>
+              <div class="chart-card"><div class="ch-head">Features by Owner<span class="hint">click</span></div><div class="ch-body"><canvas id="chart2"></canvas></div></div>
+              <div class="chart-card"><div class="ch-head">Installation Areas by Type<span class="hint">click</span></div><div class="ch-body"><canvas id="chart3"></canvas></div></div>
+              <div class="chart-card"><div class="ch-head">Status Share<span class="hint">click</span></div><div class="ch-body"><canvas id="chart4"></canvas></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <div class="card-head"><h3><i class="fa-solid fa-oil-well"></i>Well &amp; Well Pad Analysis</h3></div>
+            <div class="card-body">
+              <div class="stat-grid">
+                <div class="stat-box"><div class="sv" id="wa_total">0</div><div class="sl">Total Wells + Pads</div></div>
+                <div class="stat-box"><div class="sv" id="wa_operating">0</div><div class="sl">Operating</div></div>
+                <div class="stat-box"><div class="sv" id="wa_planned">0</div><div class="sl">Planned</div></div>
+                <div class="stat-box"><div class="sv" id="wa_owners">0</div><div class="sl">Distinct Owners</div></div>
+              </div>
+              <div class="table-wrap" style="max-height:230px;">
+                <table class="data-table" id="wellListTable">
+                  <thead><tr><th>Name</th><th>Submission ID</th><th>Layer</th><th>Owner</th><th>Status</th><th></th></tr></thead>
+                  <tbody id="wellListBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h3><i class="fa-solid fa-industry"></i>Installation Analysis</h3><span class="hint">by NameEnglish</span></div>
+            <div class="card-body">
+              <div class="install-grid" id="installGrid"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<div id="detailPanel">
+  <div class="dp-head">
+    <div>
+      <div class="dpt" id="dp_title">Feature Details</div>
+      <div class="dps" id="dp_subtitle">Select a feature to view details</div>
+    </div>
+    <button class="dp-close" id="dp_close"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+  <div class="dp-body" id="dp_body">
+    <div class="empty-state">Click a feature on the map or a table row to see its details here.</div>
+  </div>
+  <div class="dp-foot">
+    <button class="btn primary full" id="dp_zoom"><i class="fa-solid fa-crosshairs"></i>Zoom to Feature</button>
+  </div>
+</div>
+
+<input type="file" id="dwgFileInput" accept=".dwg" multiple style="display:none;">
+<input type="file" id="shpFileInput" accept=".zip" style="display:none;">
+
+<div id="modalScrim">
+  <div id="featureFormModal">
+    <div class="fm-head">
+      <h3 id="fm_title">Add Feature</h3>
+      <button id="fm_close" title="Close"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="fm-body" id="fm_fields"></div>
+    <div class="fm-foot">
+      <button class="btn danger" id="fm_delete" style="display:none;margin-right:auto;"><i class="fa-solid fa-trash"></i> Delete</button>
+      <button class="btn" id="fm_cancel">Cancel</button>
+      <button class="btn primary" id="fm_save"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toastHost"></div>
+
+<script>
+/* =========================================================================
+   GIS OPERATIONS DASHBOARD — application logic
+   Built on the existing QGIS2Web/Leaflet export. The original GeoJSON data
+   variables (json_SAHMAH_Block7*) are loaded
+   unmodified from data/*.js and are the single source of truth for every
+   KPI, chart, table row and map feature below.
+
+   NOTE ON THIS DATA SET: this export only contains two layers, each with a
+   fairly small attribute schema (no status, category, company, or date
+   fields anywhere). The dashboard below intentionally offers only the
+   filters, KPIs, table columns and analysis panels that correspond to
+   attributes actually present in this data, rather than reproducing
+   filters from a richer prior export that this data does not support.
+   ========================================================================= */
+
+/* ---------- 1. LAYER CONFIGURATION (SAHMAH Block 7 — 18 layers) ---------- */
+/* Declared polygons first, then lines, then points: layers are added to the
+   map in this order and the shared canvas renderer paints in insertion
+   order, so points end up in front of lines, and lines in front of areas. */
+function _lyr(v){ return (typeof window[v]!=='undefined') ? window[v] : null; }
+const LAYER_DEFS = {
+  OilReservoir:      { label:'Oil Reservoirs',              geom:'polygon', color:'#6a4c93', getData:()=>_lyr('json_SAHMAH_Block7OilReservoir_7') },
+  InstallationArea:  { label:'Installation Areas',          geom:'polygon', color:'#2a9d8f', getData:()=>_lyr('json_SAHMAH_Block7InstallationOilGasArea_5') },
+  FacilityFeature:   { label:'Oil & Gas Facility Features', geom:'polygon', color:'#9b5de5', getData:()=>_lyr('json_SAHMAH_Block7OilGasFascilitesFeature_6') },
+  BuildingArea:      { label:'Buildings (Area)',            geom:'polygon', color:'#a47148', getData:()=>_lyr('json_SAHMAH_Block7BuildingArea_2') },
+  RoadCentreLine:    { label:'Road Centre Lines',           geom:'line',    color:'#4a4e69', getData:()=>_lyr('json_SAHMAH_Block7RoadCentreLine_9') },
+  RoadEdge:          { label:'Road Edges',                  geom:'line',    color:'#8d99ae', getData:()=>_lyr('json_SAHMAH_Block7RoadEdge_10') },
+  Flowlines:         { label:'Flowlines',                   geom:'line',    color:'#3a86ff', getData:()=>_lyr('json_SAHMAH_Block7Flowlines_14') },
+  Pipelines:         { label:'Pipelines',                   geom:'line',    color:'#ff006e', getData:()=>_lyr('json_SAHMAH_Block7Pipelines_16') },
+  Powerlines:        { label:'Powerlines',                  geom:'line',    color:'#ffbe0b', getData:()=>_lyr('json_SAHMAH_Block7Powerlines_17') },
+  Datacables:        { label:'Data Cables',                 geom:'line',    color:'#06d6a0', getData:()=>_lyr('json_SAHMAH_Block7Datacables_13') },
+  Building:          { label:'Buildings (Point)',           geom:'point',   color:'#c68b59', getData:()=>_lyr('json_SAHMAH_Block7Building_19') },
+  FlowlineFeature:   { label:'Flowline Features',           geom:'point',   color:'#00b4d8', getData:()=>_lyr('json_SAHMAH_Block7FlowlineFeatures_22') },
+  PipelineFeature:   { label:'Pipeline Features',           geom:'point',   color:'#ff5c8a', getData:()=>_lyr('json_SAHMAH_Block7PipelineFeatures_26') },
+  PowerlineFeature:  { label:'Powerline Features',          geom:'point',   color:'#fb8500', getData:()=>_lyr('json_SAHMAH_Block7PowerlineFeatures_27') },
+  DatacableFeature:  { label:'Data Cable Features',         geom:'point',   color:'#0aa989', getData:()=>_lyr('json_SAHMAH_Block7DatacableFeatures_21') },
+  InstallationPoint: { label:'Installation Points',         geom:'point',   color:'#1d7874', getData:()=>_lyr('json_SAHMAH_Block7InstallationOilGasPoint_23') },
+  WellPadCenter:     { label:'Well Pad Centers',            geom:'point',   color:'#f4a300', getData:()=>_lyr('json_SAHMAH_Block7WellPadCenter_25') },
+  WellCenter:        { label:'Well Centers',                geom:'point',   color:'#e63946', getData:()=>_lyr('json_SAHMAH_Block7Well_Center_24') }
+};
+const LAYER_ORDER = Object.keys(LAYER_DEFS);
+const WELL_KEYS = ['WellCenter','WellPadCenter'];
+
+const FIELD_LABELS = {
+  OBJECTID:'Object ID', SubmissionId:'Submission ID', NameEnglish:'Name (English)', NameArabic:'Name (Arabic)',
+  Owner:'Owner', Status:'Status', BlockNo:'Block Number', BlockName:'Block Name', FacilityType:'Facility Type',
+  FeatureType:'Feature Type', RoadType:'Road Type', BuildingType:'Building Type', CableType:'Cable Type', CableUse:'Cable Use',
+  MaterialType:'Material Type', Medium:'Medium', Diameter:'Diameter', DiameterUnits:'Diameter Units',
+  Capacity:'Capacity', CapacityUnits:'Capacity Units', LocationStatus:'Location Status', SurveyMethod:'Survey Method',
+  Crossing:'Crossing', UniqueLineIdentifier:'Unique Line ID', UniqueId:'Unique ID', StartPoint:'Start Point', EndPoint:'End Point',
+  FromType:'From', ToType:'To', Height:'Height (m)', Remarks:'Remarks', GlobalID:'Global ID',
+  Shape_Length:'Length / Perimeter (m)', Shape_Area:'Area (m²)', X:'X', Y:'Y'
+};
+function fieldLabel(k){ return FIELD_LABELS[k]||k; }
+
+/* Curated editable/displayed fields per layer. System/computed fields
+   (OBJECTID, Shape_*, GlobalID, X/Y) are deliberately excluded. */
+const LAYER_FIELDS = {
+  OilReservoir:     ['NameEnglish','Owner','Status','BlockNo','Remarks'],
+  InstallationArea: ['NameEnglish','NameArabic','FacilityType','BlockName','BlockNo','Owner','Status','Remarks'],
+  FacilityFeature:  ['NameEnglish','NameArabic','Owner','Status','BlockNo','Remarks'],
+  BuildingArea:     ['NameEnglish','NameArabic','BuildingType','Height','Owner','Status','BlockNo','Remarks'],
+  RoadCentreLine:   ['NameEnglish','RoadType','Owner','Status','BlockNo','Remarks'],
+  RoadEdge:         ['NameEnglish','RoadType','Owner','Status','BlockNo','Remarks'],
+  Flowlines:        ['NameEnglish','MaterialType','Medium','Diameter','DiameterUnits','Capacity','CapacityUnits','Owner','Status','BlockNo','Remarks'],
+  Pipelines:        ['NameEnglish','MaterialType','Medium','Diameter','DiameterUnits','Capacity','CapacityUnits','Owner','Status','BlockNo','Remarks'],
+  Powerlines:       ['NameEnglish','CableType','CableUse','Capacity','CapacityUnits','Owner','Status','BlockNo','Remarks'],
+  Datacables:       ['NameEnglish','CableType','Owner','Status','BlockNo','Remarks'],
+  Building:         ['NameEnglish','NameArabic','Owner','Status','BlockNo','Remarks'],
+  FlowlineFeature:  ['NameEnglish','FeatureType','LocationStatus','Crossing','Owner','Status','BlockNo','Remarks'],
+  PipelineFeature:  ['NameEnglish','FeatureType','LocationStatus','Crossing','Owner','Status','BlockNo','Remarks'],
+  PowerlineFeature: ['NameEnglish','FeatureType','Height','LocationStatus','Owner','Status','BlockNo','Remarks'],
+  DatacableFeature: ['NameEnglish','Owner','Status','BlockNo','Remarks'],
+  InstallationPoint:['NameEnglish','SubmissionId','FacilityType','Owner','Status','BlockNo','Remarks'],
+  WellPadCenter:    ['NameEnglish','SubmissionId','Owner','Status','BlockNo','Remarks'],
+  WellCenter:       ['NameEnglish','SubmissionId','FacilityType','Owner','Status','BlockNo','Remarks']
+};
+
+/* ---------- 2. STATE ---------- */
+const state = {
+  filters:{ search:'', owner:'', status:'', block:'' },
+  layerVisible:Object.fromEntries(LAYER_ORDER.map(k=>[k,true])),
+  leafletLayers:{}, featureIndex:{}, masterFeatures:[], filteredFeatures:[],
+  selectedKey:null, table:{ page:1, pageSize:15, sortKey:null, sortDir:1, search:'' },
+  charts:{}, originalBounds:null
+};
+
+/* ---------- 3. HELPERS ---------- */
+function num(v){ const n = parseFloat(v); return isNaN(n)? null : n; }
+function nz(v){ return v===null || v===undefined || v==='' || v==='null'; }
+function s(v){ return nz(v)? '' : String(v).trim(); }
+function toast(msg, kind){
+  const host=document.getElementById('toastHost');
+  const el=document.createElement('div'); el.className='toast'+(kind?' '+kind:'');
+  const ic = kind==='error'?'fa-triangle-exclamation':kind==='warn'?'fa-circle-exclamation':'fa-circle-check';
+  el.innerHTML = '<i class="fa-solid '+ic+'"></i><span>'+msg+'</span>';
+  host.appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(()=>el.remove(),320); }, 3400);
+}
+
+/* ---------- 4. BUILD MASTER FEATURE LIST ---------- */
+function buildMasterFeatures(){
+  const list = [];
+  state.featureIndex = {};
+  LAYER_ORDER.forEach(layerKey=>{
+    const data = LAYER_DEFS[layerKey].getData();
+    if(!data || !data.features){
+      toast('Could not load layer: '+LAYER_DEFS[layerKey].label+' (data file missing or failed to load).', 'error');
+      return;
+    }
+    data.features.forEach(f=>{
+      const props = f.properties||{};
+      const rec = { layerKey, objectId: props.OBJECTID, props, geometry:f.geometry, feature:f };
+      list.push(rec);
+      state.featureIndex[layerKey+'_'+props.OBJECTID] = rec;
+    });
+  });
+  state.masterFeatures = list;
+}
+
+/* ---------- 5. POPULATE FILTER DROPDOWNS ---------- */
+function fillSelect(selectEl, values, placeholder){
+  const cur = selectEl.value;
+  selectEl.innerHTML = '<option value="">'+placeholder+'</option>' +
+    values.map(v=>'<option value="'+v.replace(/"/g,'&quot;')+'">'+v+'</option>').join('');
+  if(values.includes(cur)) selectEl.value = cur;
+}
+function distinctValuesAll(getter){
+  const set = new Set();
+  state.masterFeatures.forEach(rec=>{ const v = s(getter(rec.props)); if(v) set.add(v); });
+  return Array.from(set).sort((a,b)=>a.localeCompare(b));
+}
+function populateFilterOptions(){
+  fillSelect(document.getElementById('f_owner'), distinctValuesAll(p=>p.Owner), 'All Owners');
+  fillSelect(document.getElementById('f_status'), distinctValuesAll(p=>p.Status), 'All Statuses');
+  const blocks = new Set();
+  state.masterFeatures.forEach(rec=>{
+    const a = s(rec.props.BlockNo), b = s(rec.props.BlockName);
+    if(a) blocks.add(a); if(b) blocks.add(b);
+  });
+  fillSelect(document.getElementById('f_block'), Array.from(blocks).sort((a,b)=>a.localeCompare(b)), 'All Blocks');
+}
+
+/* ---------- 6. FILTER MATCHING ---------- */
+function matchesFilters(rec){
+  const f = state.filters, p = rec.props;
+  if(f.search){
+    const q = f.search.toLowerCase();
+    const hay = [p.NameEnglish,p.NameArabic,p.SubmissionId,p.Remarks,p.BlockName,p.FacilityType,p.FeatureType,p.RoadType]
+      .map(v=>s(v).toLowerCase()).join(' | ');
+    if(!hay.includes(q)) return false;
+  }
+  if(f.owner && s(p.Owner)!==f.owner) return false;
+  if(f.status && s(p.Status)!==f.status) return false;
+  if(f.block && s(p.BlockNo)!==f.block && s(p.BlockName)!==f.block) return false;
+  return true;
+}
+
+/* ---------- 7. MAP SETUP ---------- */
+let map, canvasRenderer;
+function initMap(){
+  canvasRenderer = L.canvas({ padding:0.5 });
+  map = L.map('map', { zoomControl:false, renderer:canvasRenderer, maxZoom:22, minZoom:2 })
+        .setView([20.9,55.7], 10);
+
+  L.control.zoom({position:'topleft'}).addTo(map);
+  L.control.scale({position:'bottomleft', metric:true, imperial:false}).addTo(map);
+
+  const sat = L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+    attribution:'', maxZoom:22, minZoom:1
+  }).addTo(map);
+  const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution:'&copy; OpenStreetMap contributors', maxZoom:19
+  });
+  L.control.layers({ 'Google Satellite': sat, 'OpenStreetMap': osm }, {}, {position:'topright', collapsed:true}).addTo(map);
+
+  map.on('mousemove', e=>{
+    document.getElementById('coordDisplay').textContent =
+      'Lat: '+e.latlng.lat.toFixed(6)+', Lng: '+e.latlng.lng.toFixed(6);
+  });
+
+  buildLeafletLayers();
+
+  const groups = Object.values(state.leafletLayers).filter(l=> l.getLayers().length);
+  if(groups.length){
+    const bg = L.featureGroup(groups);
+    try{
+      state.originalBounds = bg.getBounds();
+      if(state.originalBounds.isValid()) map.fitBounds(state.originalBounds, {padding:[20,20]});
+    }catch(e){}
+  }
+
+  document.getElementById('mapLoading').style.display='none';
+}
+
+function styleForLayer(layerKey){
+  const def = LAYER_DEFS[layerKey];
+  if(def.geom==='line') return { renderer:canvasRenderer, color:def.color, weight:3, opacity:1 };
+  return { renderer:canvasRenderer, color:'#2b2b2b', weight:1, fillColor:def.color, fillOpacity:0.55, opacity:1 };
+}
+function pointToLayerFor(layerKey, feature, latlng){
+  const def = LAYER_DEFS[layerKey];
+  return L.circleMarker(latlng, {
+    renderer:canvasRenderer, radius:5, color:'#ffffff', weight:1.5,
+    fillColor:def.color, fillOpacity:1, opacity:1
+  });
+}
+
+function featureTitle(p){ return s(p.NameEnglish) || s(p.SubmissionId) || ('Feature #'+p.OBJECTID); }
+
+function popupHtml(layerKey, props){
+  const def = LAYER_DEFS[layerKey];
+  const cols = LAYER_FIELDS[layerKey] || [];
+  let rows = '';
+  cols.filter(c=>c!=='NameEnglish').slice(0,8).forEach(c=>{
+    const val = s(props[c]);
+    if(val) rows += '<div class="pop-row"><span class="k">'+fieldLabel(c)+'</span><span class="v">'+val+'</span></div>';
+  });
+  return '<div class="pop-title">'+featureTitle(props)+'</div>'+
+    '<div style="font-size:10.5px;color:var(--gray-500);margin:-4px 0 6px;">'+def.label+'</div>'+
+    (rows||'<div class="pop-row"><span class="k">No additional attributes</span></div>');
+}
+
+function buildLeafletLayers(){
+  LAYER_ORDER.forEach(layerKey=>{
+    const def = LAYER_DEFS[layerKey];
+    const data = def.getData();
+    if(!data) return;
+    const onEach = (feature, layer)=>{
+      layer.bindPopup(popupHtml(layerKey, feature.properties), {maxHeight:320});
+      layer.on('click', ()=> onFeatureClicked(layerKey, feature.properties.OBJECTID) );
+      const rec = state.featureIndex[layerKey+'_'+feature.properties.OBJECTID];
+      if(rec) rec.leafletLayer = layer;
+    };
+    const lyr = def.geom==='point'
+      ? L.geoJSON(data, { pointToLayer:(f,ll)=> pointToLayerFor(layerKey,f,ll), onEachFeature:onEach })
+      : L.geoJSON(data, { style:()=> styleForLayer(layerKey), onEachFeature:onEach });
+    lyr.addTo(map);
+    state.leafletLayers[layerKey] = lyr;
+  });
+}
+
+function applyMapFilters(){
+  // Canvas renderer: toggle Leaflet's own hit-testing via options.interactive
+  // so hidden/filtered-out features can't be clicked through.
+  let shown = 0;
+  Object.keys(state.leafletLayers).forEach(layerKey=>{
+    const visible = state.layerVisible[layerKey];
+    const geom = LAYER_DEFS[layerKey].geom;
+    state.leafletLayers[layerKey].eachLayer(layer=>{
+      const rec = state.featureIndex[layerKey+'_'+layer.feature.properties.OBJECTID];
+      const pass = visible && rec && matchesFilters(rec);
+      if(pass) shown++;
+      if(geom==='point')      layer.setStyle({ opacity: pass?1:0, fillOpacity: pass?1:0 });
+      else if(geom==='line')  layer.setStyle({ opacity: pass?1:0, weight: pass?3:0 });
+      else                    layer.setStyle({ opacity: pass?1:0, fillOpacity: pass?0.55:0, weight: pass?1:0 });
+      layer.options.interactive = !!pass;
+      if(layer._path) layer._path.style.pointerEvents = pass? 'auto':'none';
+    });
+  });
+  document.getElementById('mapFeatureCount').textContent = shown.toLocaleString()+' features shown';
+}
+
+/* The legend is merged into the Layer Visibility list (swatch + shape + count). */
+function buildLegend(){ renderLayerToggles(); }
+
+function highlightSelected(layerKey, objectId){
+  Object.keys(state.leafletLayers).forEach(k=>{
+    state.leafletLayers[k].eachLayer(layer=>{
+      if(layer._dashHighlighted){
+        const def = LAYER_DEFS[k];
+        if(def.geom==='point') layer.setStyle({ weight:1.5, color:'#ffffff', radius:5, fillColor:def.color });
+        else if(def.geom==='line') layer.setStyle({ weight:3, color:def.color });
+        else layer.setStyle({ weight:1, color:'#2b2b2b', fillColor:def.color });
+        layer._dashHighlighted = false;
+      }
+    });
+  });
+  const rec = state.featureIndex[layerKey+'_'+objectId];
+  if(rec && rec.leafletLayer){
+    const layer = rec.leafletLayer;
+    if(LAYER_DEFS[layerKey].geom==='point') layer.setStyle({ weight:3, color:'#ffd400', radius:8 });
+    else layer.setStyle({ weight:4, color:'#ffd400' });
+    layer.bringToFront();
+    layer._dashHighlighted = true;
+  }
+}
+
+function zoomToFeature(layerKey, objectId){
+  const rec = state.featureIndex[layerKey+'_'+objectId];
+  if(!rec || !rec.leafletLayer){ toast('Feature geometry not available to zoom to.', 'error'); return; }
+  const layer = rec.leafletLayer;
+  if(layer.getLatLng){ map.setView(layer.getLatLng(), 16); }
+  else if(layer.getBounds){ map.fitBounds(layer.getBounds(), {padding:[40,40]}); }
+  layer.openPopup && layer.openPopup();
+}
+
+/* ---------- 8. SELECTION + DETAIL PANEL ---------- */
+function selectFeature(layerKey, objectId){
+  state.selectedKey = layerKey+'_'+objectId;
+  highlightSelected(layerKey, objectId);
+  const rec = state.featureIndex[state.selectedKey];
+  if(!rec) return;
+  renderDetailPanel(layerKey, rec.props);
+  document.getElementById('detailPanel').classList.add('open');
+  renderTable();
+}
+function renderDetailPanel(layerKey, p){
+  const def = LAYER_DEFS[layerKey];
+  document.getElementById('dp_title').textContent = featureTitle(p);
+  document.getElementById('dp_subtitle').textContent = def.label;
+
+  function section(title, icon, keys){
+    const filled = keys.filter(k=>s(p[k]));
+    if(!filled.length) return '';
+    let html = '<div class="dp-section"><h4><i class="fa-solid '+icon+'"></i>'+title+'</h4>';
+    filled.forEach(k=>{ html += '<div class="dp-row"><span class="k">'+fieldLabel(k)+'</span><span class="v">'+s(p[k])+'</span></div>'; });
+    return html+'</div>';
+  }
+  const cols = LAYER_FIELDS[layerKey]||[];
+  const skip = ['NameEnglish','NameArabic','SubmissionId','Owner','Status','BlockNo','BlockName','Remarks'];
+  let html = '';
+  html += section('Identification','fa-id-card', ['NameEnglish','NameArabic','SubmissionId']);
+  html += section('Attributes','fa-ruler-combined', cols.filter(k=>!skip.includes(k)));
+  html += section('Size','fa-ruler', ['Shape_Length','Shape_Area']);
+  html += section('Company / Ownership','fa-building', ['Owner','Status','BlockNo','BlockName']);
+  html += section('Remarks','fa-note-sticky', ['Remarks']);
+  html += dwgSectionHtml(layerKey, p.OBJECTID);
+  document.getElementById('dp_body').innerHTML = html || '<div class="empty-state">No additional attributes available.</div>';
+  document.getElementById('dp_zoom').onclick = ()=> zoomToFeature(layerKey, p.OBJECTID);
+}
+
+/* ---------- 9. KPIs ---------- */
+function computeKPIs(){
+  const f = state.filteredFeatures;
+  // Layers hidden in Layer Visibility are excluded from every KPI too.
+  const vis = f.filter(r=> state.layerVisible[r.layerKey]);
+  const wells = vis.filter(r=> WELL_KEYS.includes(r.layerKey));
+  const install = vis.filter(r=> r.layerKey==='InstallationArea');
+  const lenKm = keys => vis.filter(r=>keys.includes(r.layerKey))
+      .reduce((sum,r)=> sum + (num(r.props.Shape_Length)||0), 0) / 1000;
+
+  document.getElementById('kpi_total').textContent = vis.length.toLocaleString();
+  document.getElementById('kpi_wells').textContent = wells.length.toLocaleString();
+  document.getElementById('kpi_ia').textContent = install.length.toLocaleString();
+  document.getElementById('kpi_lines').textContent = lenKm(['Flowlines','Pipelines']).toLocaleString(undefined,{maximumFractionDigits:1})+' km';
+  document.getElementById('kpi_roads').textContent = lenKm(['RoadEdge','RoadCentreLine']).toLocaleString(undefined,{maximumFractionDigits:1})+' km';
+  document.getElementById('kpi_operating').textContent = vis.filter(r=>s(r.props.Status)==='Operating').length.toLocaleString();
+  document.getElementById('kpi_planned').textContent = vis.filter(r=>s(r.props.Status)==='Planned').length.toLocaleString();
+
+  const areaVals = install.map(r=>num(r.props.Shape_Area)).filter(v=>v!==null);
+  const totalArea = areaVals.reduce((a,b)=>a+b,0);
+  const avgArea = areaVals.length ? totalArea/areaVals.length : 0;
+  document.getElementById('kpi_avgArea').textContent = areaVals.length? avgArea.toLocaleString(undefined,{maximumFractionDigits:0}) : '—';
+  document.getElementById('kpi_totalArea').textContent = areaVals.length? totalArea.toLocaleString(undefined,{maximumFractionDigits:0}) : '—';
+
+  document.getElementById('filterResultCount').textContent = vis.length.toLocaleString();
+}
+
+/* ---------- 10. CHARTS ---------- */
+const CHART_PALETTE = ['#3ea6ff','#00c2a8','#e8a33d','#e5484d','#7c65da','#2fb872','#db1e2a','#02b029','#c732b7','#465269','#cc6045','#3232e1'];
+function countBy(records, getKey, limit){
+  const m = {};
+  records.forEach(r=>{ const k = getKey(r); if(!k) return; m[k]=(m[k]||0)+1; });
+  return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0, limit||8);
+}
+function makeBarChart(id, entries, onClick, doughnut){
+  const ctx = document.getElementById(id).getContext('2d');
+  if(state.charts[id]) state.charts[id].destroy();
+  state.charts[id] = new Chart(ctx, {
+    type: doughnut ? 'doughnut' : 'bar',
+    data:{
+      labels: entries.map(e=>e[0]),
+      datasets:[{ data: entries.map(e=>e[1]), backgroundColor: CHART_PALETTE, borderRadius: doughnut?0:4, borderWidth:0 }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      indexAxis: doughnut ? undefined : 'y',
+      plugins:{ legend:{ display: !!doughnut, position:'right', labels:{boxWidth:9,font:{size:9}} } },
+      scales: doughnut ? {} : { x:{ beginAtZero:true, ticks:{font:{size:9}} }, y:{ ticks:{font:{size:9}} } },
+      onClick:(evt, els)=>{
+        if(!els.length) return;
+        const label = entries[els[0].index][0];
+        if(onClick) onClick(label);
+      }
+    }
+  });
+}
+function renderCharts(){
+  const f = state.filteredFeatures.filter(r=> state.layerVisible[r.layerKey]);
+  const byLayer = LAYER_ORDER
+    .map(k=>[LAYER_DEFS[k].label, f.filter(r=>r.layerKey===k).length])
+    .filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  makeBarChart('chart1', byLayer, label=>{
+    LAYER_ORDER.forEach(k=> state.layerVisible[k] = (LAYER_DEFS[k].label===label));
+    renderLayerToggles(); refreshDashboard();
+    toast('Showing only "'+label+'". Use "Show All" to restore.');
+  });
+  makeBarChart('chart2', countBy(f, r=>s(r.props.Owner)), v=>{ document.getElementById('f_owner').value=v; onFilterChange(); });
+  const install = f.filter(r=>r.layerKey==='InstallationArea');
+  makeBarChart('chart3', countBy(install, r=>s(r.props.NameEnglish)), v=>{ document.getElementById('f_search').value=v; onFilterChange(); });
+  makeBarChart('chart4', countBy(f, r=>s(r.props.Status)), v=>{ document.getElementById('f_status').value=v; onFilterChange(); }, true);
+}
+
+/* ---------- 11. TABLE ---------- */
+const TABLE_COLUMNS = ['Layer','Name','Owner','Status','Block','OBJECTID'];
+function getRowValue(rec, col){
+  if(col==='Layer') return LAYER_DEFS[rec.layerKey].label;
+  if(col==='Name') return s(rec.props.NameEnglish)||s(rec.props.SubmissionId);
+  if(col==='Block') return s(rec.props.BlockNo)||s(rec.props.BlockName);
+  return s(rec.props[col]);
+}
+function currentColumns(){ return TABLE_COLUMNS; }
+function tableRows(){ return state.filteredFeatures.filter(r=> state.layerVisible[r.layerKey]); }
+function renderTableHead(){
+  const cols = currentColumns();
+  const head = document.getElementById('tableHeadRow');
+  head.innerHTML = cols.map(c=>{
+    const label = c==='OBJECTID' ? 'Object ID' : c;
+    const ic = state.table.sortKey===c ? (state.table.sortDir===1?'<i class="fa-solid fa-arrow-up sort-ic"></i>':'<i class="fa-solid fa-arrow-down sort-ic"></i>') : '';
+    return '<th data-col="'+c+'">'+label+ic+'</th>';
+  }).join('') + '<th>Actions</th>';
+  head.querySelectorAll('th[data-col]').forEach(th=>{
+    th.onclick = ()=>{
+      const col = th.getAttribute('data-col');
+      if(state.table.sortKey===col) state.table.sortDir *= -1; else { state.table.sortKey=col; state.table.sortDir=1; }
+      state.table.page = 1;
+      renderTable();
+    };
+  });
+}
+function renderTable(){
+  renderTableHead();
+  const cols = currentColumns();
+  let rows = tableRows();
+
+  if(state.table.search){
+    const q = state.table.search.toLowerCase();
+    rows = rows.filter(r=> cols.some(c=> getRowValue(r,c).toLowerCase().includes(q)) );
+  }
+  if(state.table.sortKey){
+    const key = state.table.sortKey;
+    rows = rows.slice().sort((a,b)=>{
+      const av = getRowValue(a,key), bv = getRowValue(b,key);
+      const an = parseFloat(av), bn = parseFloat(bv);
+      let cmp;
+      if(!isNaN(an) && !isNaN(bn) && av!=='' && bv!=='') cmp = an-bn;
+      else cmp = av.localeCompare(bv);
+      return cmp*state.table.sortDir;
+    });
+  }
+
+  const total = rows.length;
+  const pageSize = state.table.pageSize;
+  const pages = Math.max(1, Math.ceil(total/pageSize));
+  if(state.table.page>pages) state.table.page = pages;
+  const startIdx = (state.table.page-1)*pageSize;
+  const pageRows = rows.slice(startIdx, startIdx+pageSize);
+
+  const body = document.getElementById('tableBody');
+  if(!pageRows.length){
+    body.innerHTML = '<tr><td colspan="'+(cols.length+1)+'"><div class="empty-state"><i class="fa-solid fa-inbox" style="font-size:20px;margin-bottom:6px;display:block;"></i>No records match the current filters.</div></td></tr>';
+  } else {
+    body.innerHTML = pageRows.map(r=>{
+      const key = r.layerKey+'_'+r.objectId;
+      const selectedCls = state.selectedKey===key ? ' row-selected' : '';
+      const tds = cols.map(c=> '<td>'+(getRowValue(r,c)||'—')+'</td>').join('');
+      return '<tr class="'+selectedCls.trim()+'" data-key="'+key+'">'+tds+
+        '<td class="row-actions"><button class="icon-btn" title="Zoom" data-act="zoom" data-key="'+key+'"><i class="fa-solid fa-crosshairs"></i></button>'+
+        '<button class="icon-btn" title="View" data-act="view" data-key="'+key+'"><i class="fa-solid fa-eye"></i></button></td></tr>';
+    }).join('');
+  }
+
+  document.getElementById('tableStatus').textContent = total.toLocaleString()+' record'+(total===1?'':'s');
+  document.getElementById('pagerLabel').textContent = 'Page '+state.table.page+' / '+pages;
+
+  body.querySelectorAll('tr[data-key]').forEach(tr=>{
+    tr.addEventListener('click', (e)=>{
+      if(e.target.closest('button')) return;
+      const [layerKey, objectId] = splitKey(tr.getAttribute('data-key'));
+      selectFeature(layerKey, objectId);
+    });
+  });
+  body.querySelectorAll('button[data-act]').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const [layerKey, objectId] = splitKey(btn.getAttribute('data-key'));
+      if(btn.getAttribute('data-act')==='zoom') zoomToFeature(layerKey, objectId);
+      else selectFeature(layerKey, objectId);
+    });
+  });
+}
+function splitKey(key){
+  const idx = key.lastIndexOf('_');
+  return [key.slice(0,idx), key.slice(idx+1)];
+}
+
+/* ---------- 12. WELL & WELL PAD ANALYSIS ---------- */
+function renderWellAnalysis(){
+  const wells = state.filteredFeatures.filter(r=> WELL_KEYS.includes(r.layerKey) && state.layerVisible[r.layerKey]);
+  document.getElementById('wa_total').textContent = wells.length.toLocaleString();
+  document.getElementById('wa_operating').textContent = wells.filter(r=>s(r.props.Status)==='Operating').length.toLocaleString();
+  document.getElementById('wa_planned').textContent = wells.filter(r=>s(r.props.Status)==='Planned').length.toLocaleString();
+  document.getElementById('wa_owners').textContent = new Set(wells.map(r=>s(r.props.Owner)).filter(Boolean)).size.toLocaleString();
+
+  const body = document.getElementById('wellListBody');
+  const rows = wells.slice(0,60);
+  body.innerHTML = rows.length ? rows.map(r=>{
+    const key = r.layerKey+'_'+r.objectId;
+    return '<tr data-key="'+key+'"><td>'+(s(r.props.NameEnglish)||'—')+'</td><td>'+(s(r.props.SubmissionId)||'—')+'</td>'+
+      '<td>'+LAYER_DEFS[r.layerKey].label+'</td><td>'+(s(r.props.Owner)||'—')+'</td><td>'+(s(r.props.Status)||'—')+'</td>'+
+      '<td><button class="icon-btn" data-act="zoom" data-key="'+key+'"><i class="fa-solid fa-crosshairs"></i></button></td></tr>';
+  }).join('') : '<tr><td colspan="6"><div class="empty-state">No wells match the current filters.</div></td></tr>';
+  body.querySelectorAll('button[data-act]').forEach(btn=>{
+    btn.addEventListener('click', e=>{ e.stopPropagation(); const [lk,id]=splitKey(btn.getAttribute('data-key')); zoomToFeature(lk,id); });
+  });
+  body.querySelectorAll('tr[data-key]').forEach(tr=>{
+    tr.addEventListener('click', ()=>{ const [lk,id]=splitKey(tr.getAttribute('data-key')); selectFeature(lk,id); });
+  });
+}
+
+/* ---------- 13. INSTALLATION ANALYSIS ---------- */
+function renderInstallationAnalysis(){
+  const f = state.filteredFeatures.filter(r=>r.layerKey==='InstallationArea' && state.layerVisible.InstallationArea);
+  const counts = {};
+  f.forEach(r=>{ const n = s(r.props.NameEnglish)||'(Unclassified)'; counts[n]=(counts[n]||0)+1; });
+  const entries = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  const host = document.getElementById('installGrid');
+  host.innerHTML = entries.length ? entries.map(([name,count],i)=>
+    '<div class="install-item"><span class="isw" style="background:'+CHART_PALETTE[i%CHART_PALETTE.length]+'"></span>'+
+    '<div><div class="iv">'+count.toLocaleString()+'</div><div class="il">'+name+'</div></div></div>'
+  ).join('') : '<div class="empty-state">No installation areas match the current filters.</div>';
+}
+
+/* ---------- 14. LAYER VISIBILITY TOGGLES (also serves as the legend) ---------- */
+function renderLayerToggles(){
+  const host = document.getElementById('layerToggleList');
+  host.innerHTML = LAYER_ORDER.slice().reverse().map(k=>{   // points first (top), areas last
+    const def = LAYER_DEFS[k];
+    const count = state.masterFeatures.filter(r=>r.layerKey===k).length;
+    const swClass = def.geom==='point' ? 'swatch circle' : def.geom==='line' ? 'swatch line' : 'swatch';
+    return '<div class="layer-toggle"><label class="lt-row"><input type="checkbox" data-layer="'+k+'" '+(state.layerVisible[k]?'checked':'')+' style="accent-color:'+def.color+';">'+
+      '<span class="'+swClass+'" style="background:'+def.color+'"></span><span class="lname" title="'+def.label+'">'+def.label+'</span>'+
+      '<span class="lcount">'+count.toLocaleString()+'</span></label>'+
+      '<button class="lexport" data-export="'+k+'" title="Export this layer as GeoJSON"><i class="fa-solid fa-download"></i></button></div>';
+  }).join('');
+  host.querySelectorAll('input[data-layer]').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      state.layerVisible[cb.getAttribute('data-layer')] = cb.checked;
+      refreshDashboard();
+    });
+  });
+  host.querySelectorAll('button[data-export]').forEach(btn=>{
+    btn.addEventListener('click', e=>{ e.preventDefault(); e.stopPropagation(); exportLayerGeoJSON(btn.getAttribute('data-export')); });
+  });
+}
+
+/* ---------- 15. MAIN REFRESH PIPELINE ---------- */
+function refreshDashboard(){
+  state.filteredFeatures = state.masterFeatures.filter(matchesFilters);
+  computeKPIs();
+  renderCharts();
+  state.table.page = 1;
+  renderTable();
+  renderWellAnalysis();
+  renderInstallationAnalysis();
+  applyMapFilters();
+}
+function onFilterChange(){
+  state.filters.search = document.getElementById('f_search').value.trim();
+  state.filters.owner = document.getElementById('f_owner').value;
+  state.filters.status = document.getElementById('f_status').value;
+  state.filters.block = document.getElementById('f_block').value;
+  refreshDashboard();
+}
+
+/* ---------- 16. EXPORT CSV ---------- */
+function exportCsv(){
+  const cols = currentColumns();
+  const rows = tableRows();
+  const header = cols.join(',');
+  const lines = rows.map(r=> cols.map(c=>{
+    let v = getRowValue(r,c);
+    v = String(v).replace(/"/g,'""');
+    return '"'+v+'"';
+  }).join(','));
+  const csv = [header].concat(lines).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'sahmah-block7-export-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(link); link.click(); link.remove();
+  toast('Exported '+rows.length.toLocaleString()+' filtered records to CSV.');
+}
+
+/* ---------- 17. UI WIRING ---------- */
+function wireUi(){
+  ['f_owner','f_status','f_block'].forEach(id=> document.getElementById(id).addEventListener('change', onFilterChange));
+  let t; document.getElementById('f_search').addEventListener('input', ()=>{ clearTimeout(t); t=setTimeout(onFilterChange, 250); });
+
+  document.getElementById('btnClearFilters').addEventListener('click', ()=>{
+    ['f_owner','f_status','f_block'].forEach(id=> document.getElementById(id).value='');
+    document.getElementById('f_search').value='';
+    onFilterChange();
+    toast('Filters cleared.');
+  });
+
+  document.getElementById('sidebarToggle').addEventListener('click', ()=>{
+    document.getElementById('sidebar').classList.toggle('collapsed');
+    setTimeout(()=> map && map.invalidateSize(), 260);
+  });
+  document.getElementById('sidebarScrim').addEventListener('click', ()=>{
+    document.getElementById('sidebar').classList.add('collapsed');
+  });
+
+  document.getElementById('btnShowAllLayers').addEventListener('click', ()=>{
+    LAYER_ORDER.forEach(k=> state.layerVisible[k]=true);
+    renderLayerToggles(); refreshDashboard();
+    toast('All layers shown.');
+  });
+  document.getElementById('btnHideAllLayers').addEventListener('click', ()=>{
+    LAYER_ORDER.forEach(k=> state.layerVisible[k]=false);
+    renderLayerToggles(); refreshDashboard();
+    toast('All layers hidden.');
+  });
+  document.getElementById('btnClearSelection').addEventListener('click', ()=>{
+    state.selectedKey = null;
+    document.getElementById('detailPanel').classList.remove('open');
+    Object.keys(state.leafletLayers).forEach(k=>{
+      state.leafletLayers[k].eachLayer(layer=>{ layer._dashHighlighted=false; });
+    });
+    applyMapFilters();
+    renderTable();
+  });
+  function resetDashboard(){
+    ['f_owner','f_status','f_block'].forEach(id=> document.getElementById(id).value='');
+    document.getElementById('f_search').value='';
+    LAYER_ORDER.forEach(k=> state.layerVisible[k]=true);
+    renderLayerToggles();
+    state.selectedKey=null;
+    document.getElementById('detailPanel').classList.remove('open');
+    state.table.sortKey=null; state.table.search=''; document.getElementById('tableSearch').value='';
+    onFilterChange();
+    if(state.originalBounds && state.originalBounds.isValid()) map.fitBounds(state.originalBounds,{padding:[20,20]});
+    toast('Dashboard reset.');
+  }
+  document.getElementById('btnResetDash').addEventListener('click', resetDashboard);
+  document.getElementById('btnResetDash2').addEventListener('click', resetDashboard);
+
+  document.getElementById('dp_close').addEventListener('click', ()=> document.getElementById('detailPanel').classList.remove('open'));
+
+  document.getElementById('btnFullscreen').addEventListener('click', toggleFullscreen);
+  document.getElementById('btnMapFullscreen').addEventListener('click', toggleFullscreen);
+  function toggleFullscreen(){
+    if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>toast('Full screen not supported in this browser.', 'error'));
+    else document.exitFullscreen();
+  }
+
+  document.getElementById('btnResetExtent').addEventListener('click', ()=>{
+    if(state.originalBounds && state.originalBounds.isValid()) map.fitBounds(state.originalBounds,{padding:[20,20]});
+  });
+  document.getElementById('btnLocate').addEventListener('click', ()=>{
+    if(!navigator.geolocation){ toast('Geolocation not supported.', 'error'); return; }
+    navigator.geolocation.getCurrentPosition(pos=>{
+      const ll = [pos.coords.latitude, pos.coords.longitude];
+      L.marker(ll).addTo(map).bindPopup('You are here').openPopup();
+      map.setView(ll, 14);
+    }, ()=> toast('Unable to get your location.', 'error'));
+  });
+
+  document.getElementById('tableSearch').addEventListener('input', ()=>{
+    state.table.search = document.getElementById('tableSearch').value.trim();
+    state.table.page = 1;
+    renderTable();
+  });
+  document.getElementById('pagerPrev').addEventListener('click', ()=>{ if(state.table.page>1){ state.table.page--; renderTable(); } });
+  document.getElementById('pagerNext').addEventListener('click', ()=>{ state.table.page++; renderTable(); });
+  document.getElementById('btnExportCsv').addEventListener('click', exportCsv);
+}
+
+/* ---------- 17b. GEODETIC DATUMS: WGS84 & PSD93 (PDO Survey Datum 1993) ---------- */
+/* PSD93 is the local geodetic datum used across Oman by Petroleum
+   Development Oman (PDO), built on the Clarke 1880 (RGS) ellipsoid.
+   Parameters below are the official EPSG values (EPSG:4134 geographic CRS,
+   EPSG:1439 "PSD93 to WGS 84 (1)" transformation, EPSG:3439 / EPSG:3440
+   projected UTM CRSs) — not estimated. The transform is done rigorously
+   through 3D geocentric (ECEF) coordinates rather than an abridged
+   Molodensky approximation, for accuracy consistent with survey-grade use. */
+const ELLIPSOIDS = {
+  WGS84:          { a: 6378137.0,    invf: 298.257223563 }, // EPSG:7030
+  CLARKE1880_RGS: { a: 6378249.145,  invf: 293.465 }        // EPSG:7012, used by PSD93
+};
+/* EPSG:1439 "PSD93 to WGS 84 (1)" — Position Vector 7-parameter Helmert.
+   Source: Petroleum Development Oman / EPSG registry. */
+const PSD93_TO_WGS84 = { dx:-180.624, dy:-225.516, dz:173.919, rx:-0.81, ry:-1.898, rz:8.336, ds:16.71006 };
+
+const DATUM_INFO = {
+  WGS84: { label:'WGS84 (GPS)', ellipsoid:'WGS84',
+    hint:'Standard GPS coordinates (WGS84 / ITRF), used directly on this satellite map.' },
+  PSD93: { label:'PSD93 (PDO Survey Datum 1993)', ellipsoid:'CLARKE1880_RGS',
+    hint:'PDO Survey Datum 1993 — Clarke 1880 (RGS) ellipsoid. PDO’s standard Oman UTM zones are 39N (west of 54°E) and 40N (east of 54°E). Converted to WGS84 (EPSG:1439) for display on this map — expect a shift of roughly 30–300 m from the entered position.' }
+};
+
+function geodeticToGeocentric(lat, lon, h, ell){
+  const latR = lat*Math.PI/180, lonR = lon*Math.PI/180;
+  const f = 1/ell.invf, e2 = f*(2-f);
+  const N = ell.a / Math.sqrt(1 - e2*Math.sin(latR)*Math.sin(latR));
+  return {
+    X:(N+h)*Math.cos(latR)*Math.cos(lonR),
+    Y:(N+h)*Math.cos(latR)*Math.sin(lonR),
+    Z:(N*(1-e2)+h)*Math.sin(latR)
+  };
+}
+function geocentricToGeodetic(X, Y, Z, ell){
+  const f = 1/ell.invf, e2 = f*(2-f);
+  const lon = Math.atan2(Y, X);
+  const p = Math.sqrt(X*X + Y*Y);
+  let lat = Math.atan2(Z, p*(1-e2)), h = 0;
+  for(let i=0;i<10;i++){
+    const sinLat = Math.sin(lat);
+    const N = ell.a / Math.sqrt(1 - e2*sinLat*sinLat);
+    h = p/Math.cos(lat) - N;
+    lat = Math.atan2(Z, p*(1 - e2*N/(N+h)));
+  }
+  return { lat: lat*180/Math.PI, lon: lon*180/Math.PI, h };
+}
+/* Position Vector convention (EPSG method 9606) — matches PROJ's
+   +convention=position_vector, which is how EPSG publishes PSD93 params. */
+function helmertForward(X, Y, Z, params){
+  const rx = params.rx*(Math.PI/180/3600), ry = params.ry*(Math.PI/180/3600), rz = params.rz*(Math.PI/180/3600);
+  const s = params.ds*1e-6;
+  return {
+    X: params.dx + (1+s)*(X - rz*Y + ry*Z),
+    Y: params.dy + (1+s)*(rz*X + Y - rx*Z),
+    Z: params.dz + (1+s)*(-ry*X + rx*Y + Z)
+  };
+}
+function psd93ToWgs84(lat, lon){
+  const g = geodeticToGeocentric(lat, lon, 0, ELLIPSOIDS.CLARKE1880_RGS);
+  const t = helmertForward(g.X, g.Y, g.Z, PSD93_TO_WGS84);
+  const out = geocentricToGeodetic(t.X, t.Y, t.Z, ELLIPSOIDS.WGS84);
+  return { lat: out.lat, lng: out.lon };
+}
+
+/* ---------- 17c. COORDINATE SEARCH TOOL ---------- */
+/* Standalone map-navigation tool: converts UTM or Lat/Long input (in
+   WGS84 or PSD93) to a map location, drops a distinct search marker, and
+   zooms there. It never touches state.filters and has no effect on which
+   GIS features are shown — it works completely independently of the
+   the dashboard's map layers. */
+const csState = { marker:null, lastResult:null };
+
+/* UTM -> geographic Lat/Lon on a given ellipsoid (Snyder / "Redfearn" series
+   expansion, public-domain formula). Works for WGS84 or PSD93's Clarke 1880
+   (RGS) ellipsoid. Returns {lat, lng} in decimal degrees on THAT
+   ellipsoid's datum — PSD93 output must still be run through
+   psd93ToWgs84() before use on this WGS84 map. Throws an Error with a
+   human message on bad input. */
+function utmToLatLng(zone, hemisphere, easting, northing, ellipsoidKey){
+  zone = parseInt(zone, 10);
+  easting = parseFloat(easting);
+  northing = parseFloat(northing);
+  const ell = ELLIPSOIDS[ellipsoidKey || 'WGS84'];
+
+  if(!Number.isInteger(zone) || zone < 1 || zone > 60){
+    throw new Error('Invalid UTM Zone. Please enter a zone between 1 and 60.');
+  }
+  if(hemisphere!=='N' && hemisphere!=='S'){
+    throw new Error('Invalid hemisphere. Please choose N or S.');
+  }
+  if(!isFinite(easting) || easting < 100000 || easting > 999999){
+    throw new Error('Invalid UTM Easting. Please enter a valid Easting value (typically 100,000–999,999).');
+  }
+  if(!isFinite(northing) || northing < 0 || northing > 10000000){
+    throw new Error('Invalid UTM Northing. Please enter a valid Northing value.');
+  }
+
+  const a = ell.a;
+  const f = 1/ell.invf;
+  const k0 = 0.9996;
+  const e2 = f*(2-f);
+  const e1sq = e2/(1-e2);
+
+  const x = easting - 500000.0;
+  const y = hemisphere==='S' ? (northing - 10000000.0) : northing;
+
+  const M = y / k0;
+  const mu = M / (a*(1 - e2/4 - 3*e2*e2/64 - 5*e2*e2*e2/256));
+
+  const e1 = (1 - Math.sqrt(1-e2)) / (1 + Math.sqrt(1-e2));
+
+  const phi1 = mu
+    + (3*e1/2 - 27*Math.pow(e1,3)/32) * Math.sin(2*mu)
+    + (21*e1*e1/16 - 55*Math.pow(e1,4)/32) * Math.sin(4*mu)
+    + (151*Math.pow(e1,3)/96) * Math.sin(6*mu)
+    + (1097*Math.pow(e1,4)/512) * Math.sin(8*mu);
+
+  const N1 = a / Math.sqrt(1 - e2*Math.sin(phi1)*Math.sin(phi1));
+  const T1 = Math.tan(phi1)*Math.tan(phi1);
+  const C1 = e1sq*Math.cos(phi1)*Math.cos(phi1);
+  const R1 = a*(1-e2) / Math.pow(1 - e2*Math.sin(phi1)*Math.sin(phi1), 1.5);
+  const D = x / (N1*k0);
+
+  const phi = phi1 - (N1*Math.tan(phi1)/R1) * (
+      D*D/2
+      - (5 + 3*T1 + 10*C1 - 4*C1*C1 - 9*e1sq) * Math.pow(D,4)/24
+      + (61 + 90*T1 + 298*C1 + 45*T1*T1 - 252*e1sq - 3*C1*C1) * Math.pow(D,6)/720
+    );
+
+  const lonRad = (
+      D
+      - (1 + 2*T1 + C1) * Math.pow(D,3)/6
+      + (5 - 2*C1 + 28*T1 - 3*C1*C1 + 8*e1sq + 24*T1*T1) * Math.pow(D,5)/120
+    ) / Math.cos(phi1);
+
+  const lon0 = ((zone - 1)*6 - 180 + 3) * Math.PI/180;
+
+  const lat = phi * 180/Math.PI;
+  const lng = lon0*180/Math.PI + lonRad*180/Math.PI;
+
+  if(!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90){
+    throw new Error('Location not found. Please check the coordinate values.');
+  }
+  return { lat, lng };
+}
+
+function validateLatLng(latStr, lngStr){
+  const lat = parseFloat(latStr);
+  const lng = parseFloat(lngStr);
+  if(latStr==='' || !isFinite(lat)){
+    throw new Error('Invalid latitude. Please enter a numeric latitude value.');
+  }
+  if(lat < -90 || lat > 90){
+    throw new Error('Invalid latitude. Latitude must be between -90 and +90.');
+  }
+  if(lngStr==='' || !isFinite(lng)){
+    throw new Error('Invalid longitude. Please enter a numeric longitude value.');
+  }
+  if(lng < -180 || lng > 180){
+    throw new Error('Invalid longitude. Longitude must be between -180 and +180.');
+  }
+  return { lat, lng };
+}
+
+const csSearchIcon = L.divIcon({
+  className:'search-marker-icon', html:'<i class="fa-solid fa-location-crosshairs"></i>',
+  iconSize:[30,30], iconAnchor:[15,26], popupAnchor:[0,-24]
+});
+
+function csShowError(panel, msg){
+  const el = document.getElementById(panel==='utm' ? 'cs_utmError' : 'cs_llError');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+function csClearError(panel){
+  const el = document.getElementById(panel==='utm' ? 'cs_utmError' : 'cs_llError');
+  el.classList.remove('show');
+  el.textContent = '';
+}
+
+function csPlaceMarker(mapLat, mapLng, opts){
+  opts = opts || {};
+  if(csState.marker){ map.removeLayer(csState.marker); csState.marker = null; }
+
+  const isPsd93 = opts.datum==='PSD93';
+  const popupHtml =
+    '<div class="search-popup"><div class="pop-title"><i class="fa-solid fa-location-crosshairs" style="color:#ffce00;"></i>SEARCH LOCATION</div>'+
+    (isPsd93 ?
+      '<div class="pop-row"><span class="k">PSD93 Lat</span><span class="v">'+opts.srcLat.toFixed(6)+'</span></div>'+
+      '<div class="pop-row"><span class="k">PSD93 Lng</span><span class="v">'+opts.srcLng.toFixed(6)+'</span></div>'+
+      (opts.utmUsedLabel? '<div class="pop-row"><span class="k">UTM Used</span><span class="v">'+opts.utmUsedLabel+'</span></div>' : '')+
+      '<div class="pop-row"><span class="k">WGS84 Lat</span><span class="v">'+mapLat.toFixed(6)+'</span></div>'+
+      '<div class="pop-row"><span class="k">WGS84 Lng</span><span class="v">'+mapLng.toFixed(6)+'</span></div>'
+      :
+      '<div class="pop-row"><span class="k">Latitude</span><span class="v">'+mapLat.toFixed(6)+'</span></div>'+
+      '<div class="pop-row"><span class="k">Longitude</span><span class="v">'+mapLng.toFixed(6)+'</span></div>'+
+      (opts.utmUsedLabel? '<div class="pop-row"><span class="k">UTM Used</span><span class="v">'+opts.utmUsedLabel+'</span></div>' : '')
+    )+
+    '<div class="sp-actions"><button class="primary" id="cs_pop_zoom">Zoom to Location</button><button id="cs_pop_clear">Clear Marker</button></div></div>';
+
+  // L.marker (not our canvas-rendered shapes) lives in Leaflet's markerPane,
+  // which sits above the overlayPane our GIS layers draw into — so the
+  // search marker always stays visually on top of every GIS feature.
+  csState.marker = L.marker([mapLat,mapLng], { icon:csSearchIcon, zIndexOffset:1000 }).addTo(map);
+  csState.marker.bindPopup(popupHtml, {className:'', maxWidth:260});
+  csState.marker.on('popupopen', ()=>{
+    const zBtn = document.getElementById('cs_pop_zoom');
+    const cBtn = document.getElementById('cs_pop_clear');
+    if(zBtn) zBtn.onclick = ()=> map.setView([mapLat,mapLng], 16);
+    if(cBtn) cBtn.onclick = ()=> csClearMarker();
+  });
+  csState.marker.openPopup();
+  map.setView([mapLat,mapLng], 15);
+
+  csState.lastResult = { lat:mapLat, lng:mapLng, srcLat:opts.srcLat, srcLng:opts.srcLng, datum:opts.datum, utmUsedLabel:opts.utmUsedLabel };
+
+  document.getElementById('cs_res_lat').textContent = mapLat.toFixed(6);
+  document.getElementById('cs_res_lng').textContent = mapLng.toFixed(6);
+  const sourceBlock = document.getElementById('cs_res_sourceBlock');
+  const utmRow = document.getElementById('cs_res_utmRow');
+  if(isPsd93){
+    sourceBlock.style.display = '';
+    document.getElementById('cs_res_sourceLabel').textContent = 'PSD93 (Entered)';
+    document.getElementById('cs_res_srcLat').textContent = opts.srcLat.toFixed(6);
+    document.getElementById('cs_res_srcLng').textContent = opts.srcLng.toFixed(6);
+    if(opts.utmUsedLabel){ utmRow.style.display='flex'; document.getElementById('cs_res_utm').textContent = opts.utmUsedLabel; }
+    else { utmRow.style.display='none'; }
+  } else {
+    sourceBlock.style.display = 'none';
+  }
+  document.getElementById('cs_result').classList.add('show');
+}
+
+function csClearMarker(){
+  if(csState.marker){ map.removeLayer(csState.marker); csState.marker = null; }
+  csState.lastResult = null;
+  document.getElementById('cs_result').classList.remove('show');
+}
+
+function csSelectedDatum(){
+  return document.getElementById('cs_datum').value; // 'WGS84' | 'PSD93'
+}
+
+function csDoUtmSearch(){
+  csClearError('utm');
+  try{
+    const datum = csSelectedDatum();
+    const zone = document.getElementById('cs_utmZone').value;
+    const hemi = document.getElementById('cs_utmHemi').value;
+    const easting = document.getElementById('cs_utmEasting').value;
+    const northing = document.getElementById('cs_utmNorthing').value;
+    const utmLabel = 'Zone '+zone+hemi+', E '+easting+', N '+northing;
+
+    if(datum==='PSD93'){
+      const src = utmToLatLng(zone, hemi, easting, northing, 'CLARKE1880_RGS');
+      const mapLL = psd93ToWgs84(src.lat, src.lng);
+      csPlaceMarker(mapLL.lat, mapLL.lng, { datum:'PSD93', srcLat:src.lat, srcLng:src.lng, utmUsedLabel:utmLabel });
+    } else {
+      const { lat, lng } = utmToLatLng(zone, hemi, easting, northing, 'WGS84');
+      csPlaceMarker(lat, lng, { datum:'WGS84', utmUsedLabel:utmLabel });
+    }
+  }catch(err){
+    csShowError('utm', err.message || 'Location not found. Please check the coordinate values.');
+  }
+}
+function csDoLatLngSearch(){
+  csClearError('latlong');
+  try{
+    const datum = csSelectedDatum();
+    const latStr = document.getElementById('cs_lat').value.trim();
+    const lngStr = document.getElementById('cs_lng').value.trim();
+    const { lat, lng } = validateLatLng(latStr, lngStr);
+
+    if(datum==='PSD93'){
+      const mapLL = psd93ToWgs84(lat, lng);
+      csPlaceMarker(mapLL.lat, mapLL.lng, { datum:'PSD93', srcLat:lat, srcLng:lng });
+    } else {
+      csPlaceMarker(lat, lng, { datum:'WGS84' });
+    }
+  }catch(err){
+    csShowError('latlong', err.message || 'Location not found. Please check the coordinate values.');
+  }
+}
+
+function initCoordinateSearch(){
+  function updateDatumHint(){
+    const d = csSelectedDatum();
+    document.getElementById('cs_datum_hint').textContent = DATUM_INFO[d].hint;
+  }
+  document.getElementById('cs_datum').addEventListener('change', updateDatumHint);
+  updateDatumHint();
+
+  document.getElementById('cs_tab_utm').addEventListener('click', ()=>{
+    document.getElementById('cs_tab_utm').classList.add('active');
+    document.getElementById('cs_tab_latlong').classList.remove('active');
+    document.getElementById('cs_panel_utm').style.display='';
+    document.getElementById('cs_panel_latlong').style.display='none';
+  });
+  document.getElementById('cs_tab_latlong').addEventListener('click', ()=>{
+    document.getElementById('cs_tab_latlong').classList.add('active');
+    document.getElementById('cs_tab_utm').classList.remove('active');
+    document.getElementById('cs_panel_latlong').style.display='';
+    document.getElementById('cs_panel_utm').style.display='none';
+  });
+
+  document.getElementById('cs_utmSearch').addEventListener('click', csDoUtmSearch);
+  document.getElementById('cs_utmClear').addEventListener('click', ()=>{
+    document.getElementById('cs_utmEasting').value='';
+    document.getElementById('cs_utmNorthing').value='';
+    csClearError('utm');
+    csClearMarker();
+  });
+  ['cs_utmZone','cs_utmEasting','cs_utmNorthing'].forEach(id=>{
+    document.getElementById(id).addEventListener('keydown', e=>{ if(e.key==='Enter') csDoUtmSearch(); });
+  });
+
+  document.getElementById('cs_llSearch').addEventListener('click', csDoLatLngSearch);
+  document.getElementById('cs_llClear').addEventListener('click', ()=>{
+    document.getElementById('cs_lat').value='';
+    document.getElementById('cs_lng').value='';
+    csClearError('latlong');
+    csClearMarker();
+  });
+  ['cs_lat','cs_lng'].forEach(id=>{
+    document.getElementById(id).addEventListener('keydown', e=>{ if(e.key==='Enter') csDoLatLngSearch(); });
+  });
+
+  document.getElementById('cs_res_zoom').addEventListener('click', ()=>{
+    if(csState.lastResult) map.setView([csState.lastResult.lat, csState.lastResult.lng], 16);
+  });
+  document.getElementById('cs_res_copy').addEventListener('click', ()=>{
+    if(!csState.lastResult) return;
+    const r = csState.lastResult;
+    const text = r.datum==='PSD93'
+      ? 'PSD93: '+r.srcLat.toFixed(6)+', '+r.srcLng.toFixed(6)+'  |  WGS84: '+r.lat.toFixed(6)+', '+r.lng.toFixed(6)
+      : r.lat.toFixed(6)+', '+r.lng.toFixed(6);
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(
+        ()=> toast('Coordinates copied to clipboard.'),
+        ()=> toast('Could not copy coordinates.', 'error')
+      );
+    } else {
+      toast('Clipboard not available in this browser.', 'warn');
+    }
+  });
+  document.getElementById('cs_res_clear').addEventListener('click', csClearMarker);
+}
+
+/* ---------- 17d. MEASUREMENT TOOL (distance & area, in meters) ---------- */
+/* Lightweight, dependency-free measure tool built directly on Leaflet
+   primitives. Distance uses Leaflet's own L.LatLng.distanceTo() (Haversine,
+   WGS84-radius great-circle distance in meters). Area uses the standard
+   spherical-excess "geodesicArea" formula (the same public-domain
+   algorithm used by Leaflet.draw), which returns square meters directly.
+   Both are reported in meters / square meters — no unit switching to
+   km/ha. */
+const measureState = {
+  mode:null, points:[], vertexMarkers:[], activeLayer:null, previewLayer:null, finished:null
+};
+
+function measureFormatLength(m){
+  return m.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+' m';
+}
+function measureFormatArea(m2){
+  return m2.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+' m²';
+}
+function geodesicArea(latLngs){
+  const pointsCount = latLngs.length;
+  let area = 0.0;
+  const d2r = Math.PI/180;
+  if(pointsCount > 2){
+    for(let i=0;i<pointsCount;i++){
+      const p1 = latLngs[i], p2 = latLngs[(i+1)%pointsCount];
+      area += ((p2.lng - p1.lng)*d2r) * (2 + Math.sin(p1.lat*d2r) + Math.sin(p2.lat*d2r));
+    }
+    area = area * 6378137.0 * 6378137.0 / 2.0;
+  }
+  return Math.abs(area);
+}
+function measureTotalDistance(latLngs){
+  let total = 0;
+  for(let i=1;i<latLngs.length;i++) total += latLngs[i-1].distanceTo(latLngs[i]);
+  return total;
+}
+
+const measureVertexIcon = L.divIcon({
+  className:'', html:'<div style="width:9px;height:9px;border-radius:50%;background:#ffd400;border:2px solid #0a1a33;box-shadow:0 0 0 2px rgba(255,255,255,.85);"></div>',
+  iconSize:[13,13], iconAnchor:[6,6]
+});
+
+function setGisLayersInteractive(enabled){
+  // While measuring, GIS features must not intercept clicks meant for the
+  // measure tool (they'd otherwise both add a vertex AND open a popup).
+  // Reuse the same layer.options.interactive switch the filter system
+  // uses elsewhere; applyMapFilters() restores the correct per-feature
+  // state (respecting current filters/visibility) once measuring stops.
+  if(enabled){ applyMapFilters(); return; }
+  Object.keys(state.leafletLayers).forEach(k=>{
+    state.leafletLayers[k].eachLayer(layer=>{ layer.options.interactive = false; });
+  });
+}
+
+function measureUpdatePreview(cursorLatLng){
+  if(measureState.previewLayer){ map.removeLayer(measureState.previewLayer); measureState.previewLayer = null; }
+  if(!measureState.points.length || !cursorLatLng) return;
+  const last = measureState.points[measureState.points.length-1];
+  measureState.previewLayer = L.polyline([last, cursorLatLng], {
+    renderer:canvasRenderer, color:'#ffd400', weight:2, dashArray:'5,6', interactive:false
+  }).addTo(map);
+}
+
+function measureRedrawActiveShape(){
+  if(measureState.activeLayer){ map.removeLayer(measureState.activeLayer); measureState.activeLayer = null; }
+  const pts = measureState.points;
+  if(pts.length < 2) { measureUpdatePanel(); return; }
+
+  if(measureState.mode==='distance'){
+    measureState.activeLayer = L.polyline(pts, { renderer:canvasRenderer, color:'#ffd400', weight:3, interactive:false }).addTo(map);
+  } else {
+    measureState.activeLayer = L.polygon(pts, {
+      renderer:canvasRenderer, color:'#ffd400', weight:3, fillColor:'#ffd400', fillOpacity:0.18, interactive:false
+    }).addTo(map);
+  }
+  measureUpdatePanel();
+}
+
+function measureUpdatePanel(){
+  const pts = measureState.points;
+  const segLabelEl = document.getElementById('mp_segRow').querySelector('.k');
+  if(measureState.mode==='distance'){
+    const total = measureTotalDistance(pts);
+    document.getElementById('mp_metricLabel').textContent = 'Total Distance';
+    document.getElementById('mp_metricValue').textContent = measureFormatLength(total);
+    if(segLabelEl) segLabelEl.textContent = 'Last Segment';
+    if(pts.length>=2){
+      document.getElementById('mp_segRow').style.display='flex';
+      document.getElementById('mp_segValue').textContent = measureFormatLength(pts[pts.length-2].distanceTo(pts[pts.length-1]));
+    } else {
+      document.getElementById('mp_segRow').style.display='none';
+    }
+  } else {
+    const area = pts.length>=3 ? geodesicArea(pts) : 0;
+    const perim = pts.length>=2 ? measureTotalDistance(pts.length>=3 ? pts.concat([pts[0]]) : pts) : 0;
+    document.getElementById('mp_metricLabel').textContent = 'Total Area';
+    document.getElementById('mp_metricValue').textContent = measureFormatArea(area);
+    if(segLabelEl) segLabelEl.textContent = 'Perimeter';
+    document.getElementById('mp_segRow').style.display='flex';
+    document.getElementById('mp_segValue').textContent = measureFormatLength(perim);
+  }
+}
+
+function measureOnMapClick(e){
+  measureState.points.push(e.latlng);
+  const vm = L.marker(e.latlng, { icon:measureVertexIcon, interactive:false }).addTo(map);
+  measureState.vertexMarkers.push(vm);
+  measureRedrawActiveShape();
+}
+function measureOnMapMouseMove(e){
+  measureUpdatePreview(e.latlng);
+}
+function measureOnMapDblClick(e){
+  L.DomEvent.stop(e);
+  measureFinishShape();
+}
+function measureOnKeyDown(e){
+  if(e.key==='Escape') stopMeasuring(true);
+}
+
+function measureFinishShape(){
+  const pts = measureState.points;
+  const minPts = measureState.mode==='distance' ? 2 : 3;
+  if(pts.length < minPts){ measureClearInProgress(); return; }
+
+  let finalLayer, labelText, labelLatLng;
+  if(measureState.mode==='distance'){
+    const total = measureTotalDistance(pts);
+    finalLayer = L.polyline(pts, { renderer:canvasRenderer, color:'#e8a33d', weight:3 });
+    labelText = measureFormatLength(total);
+    labelLatLng = pts[Math.floor(pts.length/2)];
+  } else {
+    const area = geodesicArea(pts);
+    finalLayer = L.polygon(pts, { renderer:canvasRenderer, color:'#e8a33d', weight:3, fillColor:'#e8a33d', fillOpacity:0.16 });
+    labelText = measureFormatArea(area);
+    labelLatLng = finalLayer.getBounds().getCenter();
+  }
+  finalLayer.bindTooltip(labelText, { permanent:true, direction:'center', className:'leaflet-measure-tooltip' });
+  finalLayer.addTo(measureState.finished);
+  finalLayer.openTooltip(labelLatLng);
+
+  measureClearInProgress();
+}
+
+function measureClearInProgress(){
+  measureState.points = [];
+  measureState.vertexMarkers.forEach(m=> map.removeLayer(m));
+  measureState.vertexMarkers = [];
+  if(measureState.activeLayer){ map.removeLayer(measureState.activeLayer); measureState.activeLayer = null; }
+  if(measureState.previewLayer){ map.removeLayer(measureState.previewLayer); measureState.previewLayer = null; }
+  measureUpdatePanel();
+}
+
+function startMeasuring(mode){
+  if(measureState.mode===mode){ stopMeasuring(true); return; }
+  if(measureState.mode) stopMeasuring(true);
+  if(shpAlignState.activeId) cancelShpAlign();
+
+  measureState.mode = mode;
+  setGisLayersInteractive(false);
+  map.getContainer().classList.add('measuring-cursor');
+  map.doubleClickZoom.disable();
+  map.on('click', measureOnMapClick);
+  map.on('mousemove', measureOnMapMouseMove);
+  map.on('dblclick', measureOnMapDblClick);
+  document.addEventListener('keydown', measureOnKeyDown);
+
+  document.getElementById('btnMeasureDistance').classList.toggle('active', mode==='distance');
+  document.getElementById('btnMeasureArea').classList.toggle('active', mode==='area');
+  document.getElementById('mp_title').textContent = mode==='distance' ? 'Measure Distance' : 'Measure Area';
+  document.getElementById('measurePanel').classList.add('show');
+  measureUpdatePanel();
+}
+
+function stopMeasuring(discardInProgress){
+  if(!measureState.mode) return;
+  if(discardInProgress) measureClearInProgress();
+
+  map.off('click', measureOnMapClick);
+  map.off('mousemove', measureOnMapMouseMove);
+  map.off('dblclick', measureOnMapDblClick);
+  document.removeEventListener('keydown', measureOnKeyDown);
+  map.doubleClickZoom.enable();
+  map.getContainer().classList.remove('measuring-cursor');
+  setGisLayersInteractive(true);
+
+  measureState.mode = null;
+  document.getElementById('btnMeasureDistance').classList.remove('active');
+  document.getElementById('btnMeasureArea').classList.remove('active');
+  document.getElementById('measurePanel').classList.remove('show');
+}
+
+function clearAllMeasurements(){
+  measureClearInProgress();
+  if(measureState.finished) measureState.finished.clearLayers();
+  toast('Measurements cleared.');
+}
+
+function initMeasureTool(){
+  measureState.finished = L.layerGroup().addTo(map);
+  document.getElementById('btnMeasureDistance').addEventListener('click', ()=> startMeasuring('distance'));
+  document.getElementById('btnMeasureArea').addEventListener('click', ()=> startMeasuring('area'));
+  document.getElementById('btnMeasureClear').addEventListener('click', clearAllMeasurements);
+}
+
+/* ---------- 17e. DATA ENTRY / EDIT TOOL (all 18 layers; points, lines, polygons) ---------- */
+/* Add a new point / line / polygon feature to any layer of the matching
+   geometry type, or edit/delete an existing feature of any layer. Edits are
+   written into the same json_SAHMAH_* arrays that drive every KPI, chart,
+   table row and map layer, and are persisted to this browser's localStorage
+   so they survive a reload. Use the download icon next to a layer to export
+   the updated layer as GeoJSON. */
+
+const EDIT_STORAGE_KEY = 'sahmahDashboard_userEdits_v1';
+const GEOM_LABEL = { point:'Point', line:'Line', polygon:'Polygon / Area' };
+
+function emptyUserEdits(){
+  const o = { added:{}, deleted:{}, edited:{} };
+  LAYER_ORDER.forEach(k=>{ o.added[k]=[]; o.deleted[k]=[]; o.edited[k]={}; });
+  return o;
+}
+function loadUserEdits(){
+  const base = emptyUserEdits();
+  try{
+    const raw = localStorage.getItem(EDIT_STORAGE_KEY);
+    if(raw){
+      const saved = JSON.parse(raw);
+      LAYER_ORDER.forEach(k=>{
+        if(saved.added && saved.added[k]) base.added[k] = saved.added[k];
+        if(saved.deleted && saved.deleted[k]) base.deleted[k] = saved.deleted[k];
+        if(saved.edited && saved.edited[k]) base.edited[k] = saved.edited[k];
+      });
+    }
+  }catch(e){}
+  return base;
+}
+let userEdits = loadUserEdits();
+function saveUserEdits(){
+  try{ localStorage.setItem(EDIT_STORAGE_KEY, JSON.stringify(userEdits)); }
+  catch(e){ toast('Could not save your edit to this browser (storage unavailable).', 'warn'); }
+}
+
+const editToolState = { drawMode:null, started:false, layerKey:null, deleteMode:false, points:[], vertexMarkers:[], previewLayer:null, activeLayer:null, pendingSaveCtx:null };
+
+/* Applied once, before buildMasterFeatures(), so added/edited/deleted
+   features flow through exactly the same code path as the original data. */
+function applyUserEditsToRawData(){
+  LAYER_ORDER.forEach(layerKey=>{
+    const data = LAYER_DEFS[layerKey].getData();
+    if(!data || !data.features) return;
+    const deletedIds = new Set((userEdits.deleted[layerKey]||[]).map(String));
+    if(deletedIds.size) data.features = data.features.filter(f=> !deletedIds.has(String(f.properties.OBJECTID)));
+    const edits = userEdits.edited[layerKey]||{};
+    data.features.forEach(f=>{
+      const ov = edits[String(f.properties.OBJECTID)];
+      if(ov) Object.assign(f.properties, ov);
+    });
+    (userEdits.added[layerKey]||[]).forEach(f=> data.features.push(f));
+  });
+}
+
+function nextObjectId(layerKey){
+  let max = 0;
+  const data = LAYER_DEFS[layerKey].getData();
+  (data && data.features || []).forEach(f=>{ const n = parseInt(f.properties.OBJECTID,10); if(!isNaN(n) && n>max) max = n; });
+  // also avoid reusing an id that was deleted earlier and is still remembered
+  (userEdits.deleted[layerKey]||[]).forEach(id=>{ const n = parseInt(id,10); if(!isNaN(n) && n>max) max = n; });
+  return String(max+1);
+}
+
+function addFeatureToApp(layerKey, feature){
+  const props = feature.properties;
+  const rec = { layerKey, objectId: props.OBJECTID, props, geometry: feature.geometry, feature };
+  state.masterFeatures.push(rec);
+  state.featureIndex[layerKey+'_'+props.OBJECTID] = rec;
+  state.leafletLayers[layerKey].addData(feature);   // reuses the layer's own style/popup/click wiring
+  populateFilterOptions();
+  renderLayerToggles();
+  refreshDashboard();
+}
+
+function onFeatureClicked(layerKey, objectId){
+  if(editToolState.deleteMode){ openFeatureForm({ mode:'edit', layerKey, objectId }); return; }
+  selectFeature(layerKey, objectId);
+}
+
+/* ---- toolbar buttons / mode switching ---- */
+function setEditHint(title, html){
+  document.getElementById('eh_title').textContent = title;
+  document.getElementById('eh_body').innerHTML = html;
+  document.getElementById('editHintPanel').classList.add('show');
+}
+function clearEditHint(){ document.getElementById('editHintPanel').classList.remove('show'); }
+
+function stopAllEditModes(discard){
+  if(typeof shpAlignState!=='undefined' && shpAlignState.activeId) cancelShpAlign();
+  if(editToolState.drawMode){
+    map.off('click', editDrawOnClick);
+    map.off('click', editPointOnClick);
+    map.off('mousemove', editDrawOnMouseMove);
+    map.off('dblclick', editDrawOnDblClick);
+    document.removeEventListener('keydown', editDrawOnKeyDown);
+    map.doubleClickZoom.enable();
+    map.getContainer().classList.remove('adding-cursor');
+    setGisLayersInteractive(true);
+  }
+  if(discard!==false){
+    editToolState.vertexMarkers.forEach(m=> map.removeLayer(m));
+    editToolState.vertexMarkers = [];
+    if(editToolState.activeLayer){ map.removeLayer(editToolState.activeLayer); editToolState.activeLayer=null; }
+    if(editToolState.previewLayer){ map.removeLayer(editToolState.previewLayer); editToolState.previewLayer=null; }
+    editToolState.points = [];
+  }
+  editToolState.drawMode = null;
+  editToolState.started = false;
+  editToolState.layerKey = null;
+  editToolState.deleteMode = false;
+  ['btnAddPoint','btnAddLine','btnAddPolygon','btnEditFeature'].forEach(id=> document.getElementById(id).classList.remove('active'));
+  clearEditHint();
+}
+
+function editDrawRedraw(){
+  if(editToolState.activeLayer){ map.removeLayer(editToolState.activeLayer); editToolState.activeLayer=null; }
+  if(editToolState.points.length>=2){
+    editToolState.activeLayer = (editToolState.drawMode==='polygon')
+      ? L.polygon(editToolState.points, { renderer:canvasRenderer, color:'#00c2a8', weight:3, fillColor:'#00c2a8', fillOpacity:0.18, interactive:false }).addTo(map)
+      : L.polyline(editToolState.points, { renderer:canvasRenderer, color:'#00c2a8', weight:3, interactive:false }).addTo(map);
+  }
+}
+function editDrawOnClick(e){
+  const vm = L.marker(e.latlng, { icon:measureVertexIcon, interactive:false }).addTo(map);
+  editToolState.vertexMarkers.push(vm);
+  editToolState.points.push(e.latlng);
+  editDrawRedraw();
+}
+function editDrawOnMouseMove(e){
+  if(editToolState.previewLayer){ map.removeLayer(editToolState.previewLayer); editToolState.previewLayer=null; }
+  if(!editToolState.points.length) return;
+  const last = editToolState.points[editToolState.points.length-1];
+  editToolState.previewLayer = L.polyline([last, e.latlng], { renderer:canvasRenderer, color:'#00c2a8', weight:2, dashArray:'5,6', interactive:false }).addTo(map);
+}
+function editDrawOnDblClick(e){
+  L.DomEvent.stop(e);
+  // A double-click also fires two ordinary 'click' events at the same spot,
+  // which editDrawOnClick already turned into extra vertices — drop trailing
+  // points that sit on top of the previous one before finishing.
+  let pts = editToolState.points.slice();
+  while(pts.length>1 && pts[pts.length-1].distanceTo(pts[pts.length-2])<1) pts.pop();
+  const mode = editToolState.drawMode, layerKey = editToolState.layerKey;
+  const min = mode==='polygon' ? 3 : 2;
+  if(pts.length<min){ toast('A '+(mode==='polygon'?'polygon needs at least 3 points':'line needs at least 2 points')+'.', 'warn'); return; }
+  stopAllEditModes(true);
+  openFeatureForm({ mode:'add', layerKey, latlngs:pts });
+}
+function editDrawOnKeyDown(e){ if(e.key==='Escape') stopAllEditModes(true); }
+function editPointOnClick(e){
+  const ll = e.latlng, layerKey = editToolState.layerKey;
+  stopAllEditModes(true);
+  openFeatureForm({ mode:'add', layerKey, latlngs:[ll] });
+}
+
+/* Step 1: pick the target layer (only layers of the matching geometry type,
+   including currently-empty ones). Step 2 (Start): begin drawing. */
+function startAddMode(geom, btnId){
+  if(editToolState.drawMode===geom){ stopAllEditModes(true); return; }
+  stopAllEditModes(true);
+  if(typeof stopMeasuring==='function') stopMeasuring(true);
+  editToolState.drawMode = geom;
+  editToolState.started = false;
+  document.getElementById(btnId).classList.add('active');
+  const layers = LAYER_ORDER.filter(k=> LAYER_DEFS[k].geom===geom);
+  const opts = layers.map(k=> '<option value="'+k+'">'+LAYER_DEFS[k].label+'</option>').join('');
+  setEditHint('Add '+GEOM_LABEL[geom],
+    '<label style="display:block;font-size:10.5px;font-weight:700;color:var(--navy-700);text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px;">Add to layer</label>'+
+    '<select id="eh_layerSelect" style="width:100%;height:32px;border:1px solid var(--gray-300);border-radius:7px;padding:0 8px;font-size:12px;">'+opts+'</select>'+
+    '<button class="btn primary sm full" id="eh_startBtn" style="margin-top:8px;"><i class="fa-solid fa-play"></i>Start</button>'+
+    '<div style="margin-top:6px;color:var(--gray-500);">Press Esc to cancel.</div>');
+  document.addEventListener('keydown', editDrawOnKeyDown);
+  document.getElementById('eh_startBtn').addEventListener('click', ()=> beginDrawing(geom));
+}
+function beginDrawing(geom){
+  const layerKey = document.getElementById('eh_layerSelect').value;
+  editToolState.layerKey = layerKey;
+  editToolState.started = true;
+  setGisLayersInteractive(false);
+  map.getContainer().classList.add('adding-cursor');
+  const label = LAYER_DEFS[layerKey].label;
+  if(geom==='point'){
+    setEditHint('Add to '+label, 'Click anywhere on the map to place the new point. Press Esc to cancel.');
+    map.on('click', editPointOnClick);
+  } else {
+    map.doubleClickZoom.disable();
+    setEditHint('Add to '+label, geom==='polygon'
+      ? 'Click to add each corner of the new area. Double-click to finish (min. 3 points). Press Esc to cancel.'
+      : 'Click to add each vertex of the new line. Double-click to finish (min. 2 points). Press Esc to cancel.');
+    map.on('click', editDrawOnClick);
+    map.on('mousemove', editDrawOnMouseMove);
+    map.on('dblclick', editDrawOnDblClick);
+  }
+}
+function toggleDeleteEditMode(){
+  if(editToolState.deleteMode){ stopAllEditModes(true); return; }
+  stopAllEditModes(true);
+  if(typeof stopMeasuring==='function') stopMeasuring(true);
+  editToolState.deleteMode = true;
+  document.getElementById('btnEditFeature').classList.add('active');
+  setEditHint('Edit / Delete', 'Click any feature on the map to edit its details or delete it.');
+}
+
+/* ---- attribute form modal ---- */
+function openFeatureForm(ctx){
+  editToolState.pendingSaveCtx = ctx;
+  const isEdit = ctx.mode==='edit';
+  const rec = isEdit ? state.featureIndex[ctx.layerKey+'_'+ctx.objectId] : null;
+  const props = isEdit ? rec.props : {};
+  document.getElementById('fm_title').textContent = (isEdit?'Edit — ':'Add New — ') + LAYER_DEFS[ctx.layerKey].label;
+  const fields = LAYER_FIELDS[ctx.layerKey] || ['NameEnglish','Owner','Status','BlockNo','Remarks'];
+  document.getElementById('fm_fields').innerHTML = fields.map(k=>
+    '<div class="fm-field"><label>'+fieldLabel(k)+'</label>'+
+    '<input type="text" data-key="'+k+'" value="'+s(props[k]).replace(/"/g,'&quot;')+'"></div>'
+  ).join('');
+  document.getElementById('fm_delete').style.display = isEdit ? 'inline-flex' : 'none';
+  document.getElementById('modalScrim').classList.add('show');
+}
+function closeFeatureForm(){
+  document.getElementById('modalScrim').classList.remove('show');
+  editToolState.pendingSaveCtx = null;
+}
+function saveFeatureForm(){
+  const ctx = editToolState.pendingSaveCtx;
+  if(!ctx) return;
+  const layerKey = ctx.layerKey, geom = LAYER_DEFS[layerKey].geom;
+  const newProps = {};
+  document.querySelectorAll('#fm_fields input').forEach(inp=>{
+    const v = inp.value.trim();
+    newProps[inp.getAttribute('data-key')] = v==='' ? null : v;
+  });
+
+  if(ctx.mode==='add'){
+    if(!newProps.NameEnglish && !newProps.SubmissionId){ toast('Please enter at least a name.', 'warn'); return; }
+    newProps.OBJECTID = nextObjectId(layerKey);
+    let geometry;
+    if(geom==='point'){
+      geometry = { type:'Point', coordinates:[ctx.latlngs[0].lng, ctx.latlngs[0].lat] };
+    } else if(geom==='line'){
+      geometry = { type:'MultiLineString', coordinates:[ ctx.latlngs.map(ll=>[ll.lng, ll.lat]) ] };
+      newProps.Shape_Length = measureTotalDistance(ctx.latlngs);
+    } else {
+      const ring = ctx.latlngs.map(ll=>[ll.lng, ll.lat]); ring.push(ring[0]);
+      geometry = { type:'MultiPolygon', coordinates:[[ring]] };
+      newProps.Shape_Area = geodesicArea(ctx.latlngs);
+      newProps.Shape_Length = measureTotalDistance(ctx.latlngs.concat([ctx.latlngs[0]]));
+    }
+    const feature = { type:'Feature', properties:newProps, geometry };
+    LAYER_DEFS[layerKey].getData().features.push(feature);
+    addFeatureToApp(layerKey, feature);
+    userEdits.added[layerKey].push(feature);
+    saveUserEdits();
+    toast('New feature added to "'+LAYER_DEFS[layerKey].label+'".');
+  } else {
+    const rec = state.featureIndex[layerKey+'_'+ctx.objectId];
+    Object.assign(rec.props, newProps);
+    const isUserAdded = (userEdits.added[layerKey]||[]).some(f=> String(f.properties.OBJECTID)===String(ctx.objectId));
+    if(!isUserAdded){
+      userEdits.edited[layerKey][String(ctx.objectId)] = Object.assign(userEdits.edited[layerKey][String(ctx.objectId)]||{}, newProps);
+    }
+    saveUserEdits();
+    if(rec.leafletLayer) rec.leafletLayer.setPopupContent(popupHtml(layerKey, rec.props));
+    populateFilterOptions();
+    refreshDashboard();
+    if(state.selectedKey===layerKey+'_'+ctx.objectId) renderDetailPanel(layerKey, rec.props);
+    toast('Feature updated.');
+  }
+  closeFeatureForm();
+}
+function deleteFeatureForm(){
+  const ctx = editToolState.pendingSaveCtx;
+  if(!ctx || ctx.mode!=='edit') return;
+  if(!confirm('Delete this feature? This cannot be undone.')) return;
+  const layerKey = ctx.layerKey, objectId = ctx.objectId;
+  const rec = state.featureIndex[layerKey+'_'+objectId];
+  if(rec && rec.leafletLayer) state.leafletLayers[layerKey].removeLayer(rec.leafletLayer);
+  state.masterFeatures = state.masterFeatures.filter(r=> !(r.layerKey===layerKey && String(r.objectId)===String(objectId)));
+  delete state.featureIndex[layerKey+'_'+objectId];
+
+  const data = LAYER_DEFS[layerKey].getData();
+  data.features = data.features.filter(f=> String(f.properties.OBJECTID)!==String(objectId));
+
+  const wasUserAdded = (userEdits.added[layerKey]||[]).some(f=> String(f.properties.OBJECTID)===String(objectId));
+  userEdits.added[layerKey] = (userEdits.added[layerKey]||[]).filter(f=> String(f.properties.OBJECTID)!==String(objectId));
+  delete userEdits.edited[layerKey][String(objectId)];
+  if(!wasUserAdded) userEdits.deleted[layerKey].push(String(objectId));
+  saveUserEdits();
+
+  if(state.selectedKey===layerKey+'_'+objectId){ state.selectedKey=null; document.getElementById('detailPanel').classList.remove('open'); }
+  populateFilterOptions();
+  renderLayerToggles();
+  refreshDashboard();
+  closeFeatureForm();
+  toast('Feature deleted.');
+}
+
+function exportLayerGeoJSON(layerKey){
+  const data = LAYER_DEFS[layerKey].getData();
+  if(!data){ toast('No data to export for this layer.', 'error'); return; }
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/geo+json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'SAHMAH_Block7_'+layerKey+'.geojson';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 4000);
+  toast('Exported "'+LAYER_DEFS[layerKey].label+'" ('+data.features.length.toLocaleString()+' features) as GeoJSON.');
+}
+
+function initEditTool(){
+  document.getElementById('btnAddPoint').addEventListener('click', ()=> startAddMode('point','btnAddPoint'));
+  document.getElementById('btnAddLine').addEventListener('click', ()=> startAddMode('line','btnAddLine'));
+  document.getElementById('btnAddPolygon').addEventListener('click', ()=> startAddMode('polygon','btnAddPolygon'));
+  document.getElementById('btnEditFeature').addEventListener('click', toggleDeleteEditMode);
+  document.getElementById('fm_close').addEventListener('click', closeFeatureForm);
+  document.getElementById('fm_cancel').addEventListener('click', closeFeatureForm);
+  document.getElementById('fm_save').addEventListener('click', saveFeatureForm);
+  document.getElementById('fm_delete').addEventListener('click', deleteFeatureForm);
+  document.getElementById('modalScrim').addEventListener('click', e=>{ if(e.target.id==='modalScrim') closeFeatureForm(); });
+  document.getElementById('btnClearEdits').addEventListener('click', ()=>{
+    if(!confirm('Discard every change you made in this browser (added, edited and deleted features) and reload the original data?')) return;
+    try{ localStorage.removeItem(EDIT_STORAGE_KEY); }catch(e){}
+    location.reload();
+  });
+}
+
+/* ---------- 17f. DWG REFERENCE ATTACHMENTS ---------- */
+/* Lets the user attach/detach DWG (AutoCAD) files as reference documents on
+   any well or installation feature. This is a reference-only convenience —
+   DWG is a binary CAD format with no in-browser renderer here, so files are
+   just held (and offered back for download) alongside the feature, not
+   drawn on the map. Small files are persisted to localStorage so they
+   survive a reload; larger ones stay attached for the current session only
+   (browsers cap localStorage at a few MB) and the user is told so. */
+
+const DWG_STORAGE_KEY = 'gisDashboard_dwgAttachments_v1';
+const DWG_PERSIST_LIMIT_BYTES = 3 * 1024 * 1024; // per-file cap for localStorage persistence
+let dwgAttachTargetKey = null;
+
+function loadDwgAttachments(){
+  try{
+    const raw = localStorage.getItem(DWG_STORAGE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return {};
+}
+const dwgPersisted = loadDwgAttachments();   // featureKey -> [{id,name,size,addedAt,dataUrl}]
+const dwgAttachments = {};                    // featureKey -> [{id,name,size,addedAt,blobUrl,persisted}]
+
+function saveDwgAttachments(){
+  const toSave = {};
+  Object.keys(dwgAttachments).forEach(key=>{
+    const persistable = dwgAttachments[key].filter(a=>a.persisted && a.dataUrl);
+    if(persistable.length) toSave[key] = persistable.map(a=>({ id:a.id, name:a.name, size:a.size, addedAt:a.addedAt, dataUrl:a.dataUrl }));
+  });
+  try{ localStorage.setItem(DWG_STORAGE_KEY, JSON.stringify(toSave)); }
+  catch(e){ toast('Could not save DWG reference(s) to this browser (storage full) — they will still work for this session.', 'warn'); }
+}
+
+/* Rebuild in-memory blobUrls from anything persisted in localStorage. */
+function hydrateDwgAttachments(){
+  Object.keys(dwgPersisted).forEach(key=>{
+    dwgAttachments[key] = dwgPersisted[key].map(a=>{
+      let blobUrl = null;
+      try{
+        const bytes = atob(a.dataUrl.split(',')[1]);
+        const arr = new Uint8Array(bytes.length);
+        for(let i=0;i<bytes.length;i++) arr[i] = bytes.charCodeAt(i);
+        blobUrl = URL.createObjectURL(new Blob([arr], { type:'application/acad' }));
+      }catch(e){}
+      return { id:a.id, name:a.name, size:a.size, addedAt:a.addedAt, blobUrl, dataUrl:a.dataUrl, persisted:true };
+    });
+  });
+}
+
+function formatBytes(n){
+  if(n<1024) return n+' B';
+  if(n<1024*1024) return (n/1024).toFixed(1)+' KB';
+  return (n/(1024*1024)).toFixed(1)+' MB';
+}
+
+function dwgSectionHtml(layerKey, objectId){
+  const key = layerKey+'_'+objectId;
+  const list = dwgAttachments[key]||[];
+  let html = '<div class="dp-section"><h4><i class="fa-solid fa-paperclip"></i>Reference DWG Files</h4>';
+  if(list.length){
+    html += '<div class="dwg-list">' + list.map(a=>
+      '<div class="dwg-item" data-id="'+a.id+'">'+
+        '<i class="fa-solid fa-file-lines dwg-ic"></i>'+
+        '<span class="dwg-name" title="'+a.name+'">'+a.name+'</span>'+
+        '<span class="dwg-meta">'+formatBytes(a.size)+'</span>'+
+        '<div class="dwg-act">'+
+          '<button class="dwg-open" title="Open / download"><i class="fa-solid fa-arrow-up-right-from-square"></i></button>'+
+          '<button class="dwg-detach" title="Detach"><i class="fa-solid fa-trash"></i></button>'+
+        '</div>'+
+      '</div>'
+    ).join('') + '</div>';
+    if(list.some(a=>!a.persisted)) html += '<div class="dwg-session-note"><i class="fa-solid fa-triangle-exclamation"></i> One or more files are large and are only kept for this session (not saved for next visit).</div>';
+  } else {
+    html += '<div class="dwg-empty">No reference drawings attached to this feature.</div>';
+  }
+  html += '<button class="btn sm full" id="dwg_attachBtn" data-key="'+key+'"><i class="fa-solid fa-paperclip"></i>Attach DWG File</button>';
+  html += '</div>';
+  return html;
+}
+
+function attachDwgFiles(key, fileList){
+  const files = Array.from(fileList).filter(f=>/\.dwg$/i.test(f.name));
+  const rejected = fileList.length - files.length;
+  if(rejected>0) toast(rejected+' file(s) skipped — only .dwg files can be attached.', 'warn');
+  if(!files.length) return;
+  let pending = files.length;
+  files.forEach(file=>{
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const dataUrl = reader.result;
+      const persisted = file.size <= DWG_PERSIST_LIMIT_BYTES;
+      const rec = { id:'dwg_'+Date.now()+'_'+Math.random().toString(36).slice(2,8), name:file.name, size:file.size, addedAt:Date.now(), blobUrl:URL.createObjectURL(file), dataUrl: persisted?dataUrl:null, persisted };
+      if(!dwgAttachments[key]) dwgAttachments[key] = [];
+      dwgAttachments[key].push(rec);
+      if(!persisted) toast('"'+file.name+'" is larger than 3 MB — attached for this session only.', 'warn');
+      pending--;
+      if(pending===0){
+        saveDwgAttachments();
+        if(state.selectedKey===key){
+          const rec2 = state.featureIndex[key];
+          if(rec2) renderDetailPanel(rec2.layerKey, rec2.props);
+        }
+        toast(files.length>1 ? files.length+' DWG files attached.' : 'DWG file attached.');
+      }
+    };
+    reader.onerror = ()=>{ toast('Could not read "'+file.name+'".', 'error'); pending--; };
+    reader.readAsDataURL(file);
+  });
+}
+
+function detachDwgFile(key, id){
+  const list = dwgAttachments[key];
+  if(!list) return;
+  const idx = list.findIndex(a=>a.id===id);
+  if(idx===-1) return;
+  const a = list[idx];
+  if(a.blobUrl) URL.revokeObjectURL(a.blobUrl);
+  list.splice(idx,1);
+  if(!list.length) delete dwgAttachments[key];
+  saveDwgAttachments();
+  if(state.selectedKey===key){
+    const rec2 = state.featureIndex[key];
+    if(rec2) renderDetailPanel(rec2.layerKey, rec2.props);
+  }
+  toast('DWG file detached.');
+}
+
+function initDwgAttachments(){
+  hydrateDwgAttachments();
+  const fileInput = document.getElementById('dwgFileInput');
+  // Event delegation: the attach/open/detach buttons live inside dp_body,
+  // which is fully re-rendered on every selection, so listeners are bound
+  // once here on the stable parent rather than re-wired after each render.
+  document.getElementById('dp_body').addEventListener('click', e=>{
+    const attachBtn = e.target.closest('#dwg_attachBtn');
+    if(attachBtn){ dwgAttachTargetKey = attachBtn.getAttribute('data-key'); fileInput.value=''; fileInput.click(); return; }
+    const openBtn = e.target.closest('.dwg-open');
+    if(openBtn){
+      const key = state.selectedKey;
+      const id = openBtn.closest('.dwg-item').getAttribute('data-id');
+      const a = (dwgAttachments[key]||[]).find(x=>x.id===id);
+      if(a && a.blobUrl){ const link=document.createElement('a'); link.href=a.blobUrl; link.download=a.name; link.click(); }
+      return;
+    }
+    const detachBtn = e.target.closest('.dwg-detach');
+    if(detachBtn){
+      const key = state.selectedKey;
+      const id = detachBtn.closest('.dwg-item').getAttribute('data-id');
+      detachDwgFile(key, id);
+      return;
+    }
+  });
+  fileInput.addEventListener('change', ()=>{
+    if(dwgAttachTargetKey && fileInput.files.length) attachDwgFiles(dwgAttachTargetKey, fileInput.files);
+  });
+}
+
+/* ---------- 17g. SHAPEFILE REFERENCE LAYERS ---------- */
+/* Attaches a zipped Shapefile (.shp/.dbf/.prj) as a real, live map layer —
+   unlike DWG, a shapefile is already GIS vector data, so shpjs (loaded in
+   <head>) can parse it client-side into GeoJSON (reprojecting to WGS84
+   using the .prj if present) and it's drawn on the Leaflet map exactly like
+   the built-in Well Names / Installation Areas layers: clickable features,
+   a generic attribute popup, a visibility toggle, and a zoom-to-extent
+   button. Not tied to any single feature — it's an independent reference
+   layer for the whole map. */
+
+const SHP_STORAGE_KEY = 'gisDashboard_shpLayers_v1';
+const SHP_PERSIST_LIMIT_BYTES = 3 * 1024 * 1024; // cap on serialized GeoJSON kept in localStorage
+const SHP_COLOR_PALETTE = ['#e8734d','#7c5cff','#00b8a9','#ff6f91','#c9a227','#4f8a3d','#2f8fd6','#b05cd6'];
+
+const shpLayers = {}; // id -> { id, name, color, baseGeojson, offsetLng, offsetLat, geojson, leafletLayer, visible, persisted, featureCount, baseCentroid }
+let shpColorCursor = 0;
+const shpAlignState = { activeId:null, refLatLng:null };
+
+function loadShpLayerStore(){
+  try{
+    const raw = localStorage.getItem(SHP_STORAGE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return {};
+}
+function saveShpLayerStore(){
+  const toSave = {};
+  Object.keys(shpLayers).forEach(id=>{
+    const l = shpLayers[id];
+    if(l.persisted) toSave[id] = { id:l.id, name:l.name, color:l.color, baseGeojson:l.baseGeojson, offsetLng:l.offsetLng, offsetLat:l.offsetLat, visible:l.visible, featureCount:l.featureCount, baseCentroid:l.baseCentroid };
+  });
+  try{ localStorage.setItem(SHP_STORAGE_KEY, JSON.stringify(toSave)); }
+  catch(e){ toast('Could not save this reference layer to this browser (storage full) — it will still work for this session.', 'warn'); }
+}
+
+function shpGenericPopup(props){
+  const entries = Object.entries(props||{}).filter(([k,v])=> !nz(v) && k!=='fileName');
+  const title = (entries.find(([k])=>/name/i.test(k))||[])[1] || 'Reference Feature';
+  let rows = entries.slice(0,10).map(([k,v])=> '<div class="pop-row"><span class="k">'+k+'</span><span class="v">'+s(v)+'</span></div>').join('');
+  return '<div class="pop-title">'+s(title)+'</div>'+(rows||'<div class="pop-row"><span class="k">No attributes</span></div>');
+}
+
+/* Shift every coordinate in a GeoJSON tree by a fixed [dLng, dLat] — handles
+   Point/LineString/Polygon/Multi* uniformly since they only differ in
+   nesting depth (a numeric first element marks an actual coordinate pair). */
+function shiftCoordsDeep(coords, dLng, dLat){
+  if(typeof coords[0]==='number') return [coords[0]+dLng, coords[1]+dLat].concat(coords.slice(2));
+  return coords.map(c=> shiftCoordsDeep(c, dLng, dLat));
+}
+function shiftGeojsonCopy(gj, dLng, dLat){
+  const clone = JSON.parse(JSON.stringify(gj));
+  (clone.features||[]).forEach(f=>{ if(f.geometry) f.geometry.coordinates = shiftCoordsDeep(f.geometry.coordinates, dLng, dLat); });
+  return clone;
+}
+
+function buildShpLeafletLayer(record){
+  const color = record.color;
+  return L.geoJSON(record.geojson, {
+    pointToLayer:(f,latlng)=> L.circleMarker(latlng, { renderer:canvasRenderer, radius:6, color:'#fff', weight:1.5, fillColor:color, fillOpacity:0.9 }),
+    style:()=> ({ renderer:canvasRenderer, color, weight:2, fillColor:color, fillOpacity:0.22 }),
+    onEachFeature:(f,layer)=> layer.bindPopup(shpGenericPopup(f.properties), { maxHeight:280 })
+  });
+}
+
+/* Rebuilds the on-map layer from baseGeojson + the current offset — called
+   after attach, after every align nudge, and after a reset. */
+function rebuildShpLayer(record){
+  if(record.leafletLayer) map.removeLayer(record.leafletLayer);
+  record.geojson = (record.offsetLng||record.offsetLat) ? shiftGeojsonCopy(record.baseGeojson, record.offsetLng, record.offsetLat) : record.baseGeojson;
+  record.leafletLayer = buildShpLeafletLayer(record);
+  if(record.visible) record.leafletLayer.addTo(map);
+}
+
+function addShpLayerRecord(name, baseGeojson){
+  const featureCount = (baseGeojson.features||[]).length;
+  if(!featureCount){ toast('"'+name+'" contains no features.', 'warn'); return; }
+  const id = 'shp_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+  const color = SHP_COLOR_PALETTE[shpColorCursor % SHP_COLOR_PALETTE.length]; shpColorCursor++;
+  const serialized = JSON.stringify(baseGeojson);
+  const persisted = serialized.length <= SHP_PERSIST_LIMIT_BYTES;
+  const record = { id, name, color, baseGeojson, offsetLng:0, offsetLat:0, geojson:baseGeojson, visible:true, persisted, featureCount };
+  record.leafletLayer = buildShpLeafletLayer(record);
+  try{ record.baseCentroid = record.leafletLayer.getBounds().getCenter(); }catch(e){ record.baseCentroid = null; }
+  record.leafletLayer.addTo(map);
+  shpLayers[id] = record;
+  if(!persisted) toast('"'+name+'" is large — kept on the map for this session only, not saved for next visit.', 'warn');
+  saveShpLayerStore();
+  renderShpLayerList();
+  try{
+    const b = record.leafletLayer.getBounds();
+    if(b.isValid()) map.fitBounds(b, { padding:[20,20] });
+  }catch(e){}
+}
+
+/* Converts one raw PSD93 UTM coordinate [easting, northing] to WGS84
+   [lng, lat], reusing the exact same, already-validated conversion the
+   Coordinate Search tool uses (utmToLatLng + psd93ToWgs84 in section 17b). */
+function psd93UtmCoordToWgs84(easting, northing, zone){
+  const psd = utmToLatLng(zone, 'N', easting, northing, 'CLARKE1880_RGS');
+  const wgs = psd93ToWgs84(psd.lat, psd.lng);
+  return [wgs.lng, wgs.lat];
+}
+function transformRawGeojsonPsd93(gj, zone){
+  (gj.features||[]).forEach(f=>{
+    if(!f.geometry) return;
+    const walk = coords => (typeof coords[0]==='number')
+      ? psd93UtmCoordToWgs84(coords[0], coords[1], zone)
+      : coords.map(walk);
+    f.geometry.coordinates = walk(f.geometry.coordinates);
+  });
+  return gj;
+}
+
+/* Manual path for a known local datum (PSD93): unzip ourselves with JSZip,
+   parse the .shp with NO automatic reprojection (shp.parseShp(buf, false)
+   returns raw file coordinates — here, UTM easting/northing in metres),
+   then run every coordinate through the app's real PSD93→WGS84 pipeline
+   instead of relying on a generic parser to guess the datum shift. */
+async function parseShpWithKnownDatum(file, zone){
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const shpNames = Object.keys(zip.files).filter(n=> /\.shp$/i.test(n) && !zip.files[n].dir);
+  if(!shpNames.length) throw new Error('no .shp file found in the zip');
+  const findCompanion = (base, ext) => zip.file(new RegExp('^'+base.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\.'+ext+'$','i'))[0];
+  const results = [];
+  for(const shpName of shpNames){
+    const base = shpName.replace(/\.shp$/i,'');
+    const shpBuf = await zip.file(shpName).async('arraybuffer');
+    const dbfEntry = findCompanion(base,'dbf');
+    const dbfBuf = dbfEntry ? await dbfEntry.async('arraybuffer') : null;
+    const geoms = shp.parseShp(shpBuf, false);              // raw, un-reprojected
+    const rows = dbfBuf ? shp.parseDbf(dbfBuf) : null;
+    const gj = shp.combine([geoms, rows]);
+    gj.fileName = base.split('/').pop();
+    transformRawGeojsonPsd93(gj, zone);
+    results.push(gj);
+  }
+  return results.length===1 ? results[0] : results;
+}
+
+function attachShpFile(file){
+  if(!/\.zip$/i.test(file.name)){ toast('Please choose a zipped shapefile (.zip).', 'warn'); return; }
+  const proj = document.getElementById('shp_projSelect').value;
+  const zone = proj==='psd93_39' ? 39 : proj==='psd93_40' ? 40 : null;
+  document.getElementById('shp_loading').classList.add('show');
+  const parsePromise = zone ? parseShpWithKnownDatum(file, zone) : file.arrayBuffer().then(buf=> shp(buf));
+  parsePromise.then(data=>{
+    document.getElementById('shp_loading').classList.remove('show');
+    const layersData = Array.isArray(data) ? data : [data];
+    const baseName = file.name.replace(/\.zip$/i,'');
+    const tag = zone ? ' (PSD93 UTM '+zone+'N)' : '';
+    layersData.forEach((gj, i)=>{
+      const layerName = (gj.fileName || (layersData.length>1 ? baseName+' ('+(i+1)+')' : baseName)) + tag;
+      addShpLayerRecord(layerName, gj);
+    });
+  }).catch(err=>{
+    document.getElementById('shp_loading').classList.remove('show');
+    toast('Could not parse "'+file.name+'" — make sure the zip contains a .shp and .dbf. ('+err.message+')', 'error');
+  });
+}
+
+function toggleShpLayerVisibility(id){
+  const l = shpLayers[id]; if(!l) return;
+  l.visible = !l.visible;
+  if(l.visible) l.leafletLayer.addTo(map); else map.removeLayer(l.leafletLayer);
+  saveShpLayerStore();
+  renderShpLayerList();
+}
+function zoomToShpLayerFn(id){
+  const l = shpLayers[id]; if(!l) return;
+  try{ const b = l.leafletLayer.getBounds(); if(b.isValid()) map.fitBounds(b, { padding:[20,20] }); }catch(e){}
+}
+function removeShpLayer(id){
+  const l = shpLayers[id]; if(!l) return;
+  if(!confirm('Detach reference layer "'+l.name+'"? This only removes it from the map — nothing about your Well/Installation data changes.')) return;
+  if(shpAlignState.activeId===id) cancelShpAlign();
+  map.removeLayer(l.leafletLayer);
+  delete shpLayers[id];
+  saveShpLayerStore();
+  renderShpLayerList();
+  toast('Reference layer detached.');
+}
+function resetShpLayerAlignment(id){
+  const l = shpLayers[id]; if(!l) return;
+  if(!l.offsetLng && !l.offsetLat){ toast('This layer has not been shifted.'); return; }
+  l.offsetLng = 0; l.offsetLat = 0;
+  rebuildShpLayer(l);
+  saveShpLayerStore();
+  renderShpLayerList();
+  toast('Alignment reset to the original file position.');
+}
+
+/* ---- manual alignment (two-click nudge) ---- */
+function shpShiftDistanceLabel(l){
+  if(!l.offsetLng && !l.offsetLat) return null;
+  if(!l.baseCentroid) return null;
+  const from = L.latLng(l.baseCentroid.lat, l.baseCentroid.lng);
+  const to = L.latLng(l.baseCentroid.lat+l.offsetLat, l.baseCentroid.lng+l.offsetLng);
+  const m = from.distanceTo(to);
+  return 'shifted ~'+(m<1000 ? Math.round(m)+' m' : (m/1000).toFixed(2)+' km');
+}
+
+function setAlignHint(html){
+  document.getElementById('ah_body').innerHTML = html;
+  document.getElementById('alignHintPanel').classList.add('show');
+}
+function clearAlignHint(){ document.getElementById('alignHintPanel').classList.remove('show'); }
+
+function shpAlignOnMapClick(e){
+  const l = shpLayers[shpAlignState.activeId];
+  if(!l){ cancelShpAlign(); return; }
+  if(!shpAlignState.refLatLng){
+    shpAlignState.refLatLng = e.latlng;
+    setAlignHint('Now click the correct location that point should actually be at. Press Esc to cancel.');
+    return;
+  }
+  const dLng = e.latlng.lng - shpAlignState.refLatLng.lng;
+  const dLat = e.latlng.lat - shpAlignState.refLatLng.lat;
+  l.offsetLng += dLng;
+  l.offsetLat += dLat;
+  rebuildShpLayer(l);
+  saveShpLayerStore();
+  const label = shpShiftDistanceLabel(l);
+  toast('Reference layer "'+l.name+'" aligned'+(label?' ('+label+' total).':'.'));
+  cancelShpAlign();
+  renderShpLayerList();
+}
+function shpAlignOnKeyDown(e){ if(e.key==='Escape') cancelShpAlign(); }
+
+function cancelShpAlign(){
+  if(!shpAlignState.activeId) return;
+  map.off('click', shpAlignOnMapClick);
+  // The reference layer's own features have popups bound, and Leaflet stops
+  // a popup-bound feature's click from bubbling to the map — so the map
+  // listener alone misses clicks landing on the layer itself (exactly what
+  // the first align click asks the user to do). Listen on the layer too.
+  const l = shpLayers[shpAlignState.activeId];
+  if(l && l.leafletLayer) l.leafletLayer.off('click', shpAlignOnMapClick);
+  document.removeEventListener('keydown', shpAlignOnKeyDown);
+  map.getContainer().classList.remove('adding-cursor');
+  shpAlignState.activeId = null;
+  shpAlignState.refLatLng = null;
+  clearAlignHint();
+  renderShpLayerList();
+}
+function startShpAlign(id){
+  if(shpAlignState.activeId===id){ cancelShpAlign(); return; }
+  cancelShpAlign();
+  stopAllEditModes(true);      // don't let add/edit-point mode and align run at once
+  stopMeasuring(true);
+  shpAlignState.activeId = id;
+  shpAlignState.refLatLng = null;
+  map.getContainer().classList.add('adding-cursor');
+  setAlignHint('Click a recognizable point on the "'+(shpLayers[id]?shpLayers[id].name:'')+'" reference layer — a corner or landmark you can also see on the imagery. Press Esc to cancel.');
+  document.addEventListener('keydown', shpAlignOnKeyDown);
+  map.on('click', shpAlignOnMapClick);
+  if(shpLayers[id] && shpLayers[id].leafletLayer) shpLayers[id].leafletLayer.on('click', shpAlignOnMapClick);
+  renderShpLayerList();
+}
+
+function renderShpLayerList(){
+  const host = document.getElementById('shp_list');
+  const ids = Object.keys(shpLayers);
+  if(!ids.length){ host.innerHTML = '<div class="shp-empty">No shapefile reference layers attached.</div>'; return; }
+  host.innerHTML = ids.map(id=>{
+    const l = shpLayers[id];
+    const shiftLabel = shpShiftDistanceLabel(l);
+    const aligning = shpAlignState.activeId===id;
+    return '<div class="shp-item" data-id="'+id+'">'+
+      '<span class="shp-swatch" style="background:'+l.color+'"></span>'+
+      '<div class="shp-info"><div class="shp-name" title="'+l.name+'">'+l.name+'</div>'+
+      '<div class="shp-meta">'+l.featureCount.toLocaleString()+' features'+(l.persisted?'':' · session only')+'</div></div>'+
+      '<div class="shp-act">'+
+        '<button class="shp-vis'+(l.visible?'':' off')+'" title="'+(l.visible?'Hide':'Show')+'"><i class="fa-solid '+(l.visible?'fa-eye':'fa-eye-slash')+'"></i></button>'+
+        '<button class="shp-zoom" title="Zoom to layer"><i class="fa-solid fa-crosshairs"></i></button>'+
+        '<button class="shp-align'+(aligning?' active':'')+'" title="Align this layer on the map"><i class="fa-solid fa-arrows-to-dot"></i></button>'+
+        '<button class="shp-reset" title="Reset alignment"><i class="fa-solid fa-rotate-left"></i></button>'+
+        '<button class="shp-remove" title="Detach"><i class="fa-solid fa-trash"></i></button>'+
+      '</div>'+
+      (shiftLabel ? '<div class="shp-shift-note"><i class="fa-solid fa-arrows-up-down-left-right"></i> '+shiftLabel+'</div>' : '')+
+    '</div>';
+  }).join('');
+}
+
+function hydrateShpLayers(){
+  const stored = loadShpLayerStore();
+  Object.keys(stored).forEach(id=>{
+    const rec = stored[id];
+    const record = { id:rec.id, name:rec.name, color:rec.color, baseGeojson:rec.baseGeojson, offsetLng:rec.offsetLng||0, offsetLat:rec.offsetLat||0, geojson:rec.baseGeojson, visible:rec.visible, persisted:true, featureCount:rec.featureCount, baseCentroid:rec.baseCentroid };
+    record.geojson = (record.offsetLng||record.offsetLat) ? shiftGeojsonCopy(record.baseGeojson, record.offsetLng, record.offsetLat) : record.baseGeojson;
+    record.leafletLayer = buildShpLeafletLayer(record);
+    if(!record.baseCentroid){
+      try{ record.baseCentroid = L.geoJSON(record.baseGeojson).getBounds().getCenter(); }catch(e){ record.baseCentroid = null; }
+    }
+    if(record.visible) record.leafletLayer.addTo(map);
+    shpLayers[id] = record;
+  });
+  shpColorCursor = Object.keys(shpLayers).length;
+  renderShpLayerList();
+}
+
+function initShpTool(){
+  const fileInput = document.getElementById('shpFileInput');
+  document.getElementById('btnAttachShp').addEventListener('click', ()=>{ fileInput.value=''; fileInput.click(); });
+  fileInput.addEventListener('change', ()=>{ if(fileInput.files[0]) attachShpFile(fileInput.files[0]); });
+  document.getElementById('shp_list').addEventListener('click', e=>{
+    const item = e.target.closest('.shp-item'); if(!item) return;
+    const id = item.getAttribute('data-id');
+    if(e.target.closest('.shp-vis')) toggleShpLayerVisibility(id);
+    else if(e.target.closest('.shp-zoom')) zoomToShpLayerFn(id);
+    else if(e.target.closest('.shp-align')) startShpAlign(id);
+    else if(e.target.closest('.shp-reset')) resetShpLayerAlignment(id);
+    else if(e.target.closest('.shp-remove')) removeShpLayer(id);
+  });
+}
+
+/* ---------- 18. CLOCK ---------- */
+function tickClock(){
+  const now = new Date();
+  document.getElementById('clockTime').textContent = now.toLocaleTimeString();
+  document.getElementById('clockDate').textContent = now.toLocaleDateString(undefined,{weekday:'short',year:'numeric',month:'short',day:'numeric'});
+}
+
+/* ---------- 19. INIT ---------- */
+function init(){
+  applyUserEditsToRawData();
+  buildMasterFeatures();
+  populateFilterOptions();
+  renderLayerToggles();
+  wireUi();
+  initMap();
+  initCoordinateSearch();
+  initMeasureTool();
+  initEditTool();
+  initDwgAttachments();
+  initShpTool();
+  hydrateShpLayers();
+  refreshDashboard();
+  tickClock();
+  setInterval(tickClock, 1000);
+  document.getElementById('clockDisplay').style.display='block';
+
+  if(!state.masterFeatures.length){
+    toast('No GIS data could be loaded. Check that the data/ folder is alongside index.html.', 'error');
+  }
+}
+document.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>
